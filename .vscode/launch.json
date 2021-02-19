@@ -1,0 +1,36 @@
+{
+    "version": "0.0.0",
+    "configurations": [
+        {
+            "name": "Run Market",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${workspaceRoot}/server/main.go",
+            "env": {
+                "ALPACA_API_KEY_ID":"AK2I047KZ4KFV4KVO31X",
+                "ALPACA_API_KEY_SECRET":"iBqn5wSxar8Vo6CaVu6dQAyu0uELiIiFQhrJKWqB",
+                "MONGO_DB_HOST": "localhost",
+                "MONGO_DB_USERNAME": "mcmohorn",
+                "MONGO_DB_PASSWORD": "1qaz2wsx3edc4rfv"
+            },
+        },
+        
+        {
+            "name": "Debug Market",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${workspaceRoot}/server",
+            "env": {
+                "ALPACA_API_KEY_ID":"AK2I047KZ4KFV4KVO31X",
+                "ALPACA_API_KEY_SECRET":"iBqn5wSxar8Vo6CaVu6dQAyu0uELiIiFQhrJKWqB",
+                "MONGO_DB_HOST": "localhost",
+                "MONGO_DB_USERNAME": "mcmohorn",
+                "MONGO_DB_PASSWORD": "1qaz2wsx3edc4rfv"
+            },
+            "args": [],
+            "showLog": true
+        }
+    ]
+}
