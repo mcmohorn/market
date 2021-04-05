@@ -1,5 +1,7 @@
 server/vendor/
-**/.vscode/
+.vscode/launch.json
 server/rh.txt
 server/tickers2.txt
 **/*/.DS_Store
+
+web/node_modules/
