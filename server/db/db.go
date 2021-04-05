@@ -7,12 +7,27 @@ import (
 	"time"
 
 	"github.com/mcmohorn/market/server/config"
+	"github.com/mcmohorn/market/server/data"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 
-	"go.mongodb.org/mongo-driver/mongo/options"
-
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+func CreateEvent(ctx context.Context, db *mongo.Database, event data.OrderEvent) (res *mongo.InsertOneResult, err error) {
+	collection := db.Collection("events")
+	return collection.InsertOne(ctx, event)
+}
+
+func CreateError(ctx context.Context, db *mongo.Database, event data.OrderError) (id string, err error) {
+	collection := db.Collection("events")
+	res, err := collection.InsertOne(ctx, event)
+	if err != nil {
+		return
+	}
+	id = res.InsertedID.(string)
+	return
+}
 
 // GetDB gets the db connection
 func GetDB(*config.DBConfig) (*mongo.Database, error) {

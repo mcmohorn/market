@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/alpacahq/alpaca-trade-api-go/alpaca"
@@ -16,10 +17,7 @@ func init() {
 	os.Setenv(common.EnvApiKeyID, os.Getenv("ALPACA_API_KEY_ID"))
 	os.Setenv(common.EnvApiSecretKey, os.Getenv("ALPACA_API_KEY_SECRET"))
 
-	fmt.Printf("Alpaca account:  [%v %v]\n", common.Credentials().ID, common.Credentials().Secret)
-
 	alpaca.SetBaseUrl("https://api.alpaca.markets")
-
 }
 
 func main() {
@@ -30,10 +28,12 @@ func main() {
 	// create an instance of the application that will do most of the work
 	app := &app.App{}
 	rand.Seed(time.Now().UnixNano())
-	app.Initialize(config)
+	var initWG sync.WaitGroup
+	initWG.Add(1)
+	app.Initialize(config, &initWG)
+	initWG.Wait()
 
-	app.AnalyzeTickersInFile("tickers.txt")
-	//app.DrawTable()
-	app.SimulateTrader()
+	app.StartEndOfDayAnalysis()
+	//app.StartDayTrader()
 
 }

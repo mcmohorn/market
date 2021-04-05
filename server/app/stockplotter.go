@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/mcmohorn/market/server/data"
 	"math/rand"
 
 	"gonum.org/v1/plot"
@@ -10,7 +11,7 @@ import (
 )
 
 // PlotBars will plot a given list of bars
-func PlotBars(bars []MyBar, symbol string) {
+func PlotBars(bars []data.MyBar, symbol string) {
 	rand.Seed(int64(0))
 
 	p, err := plot.New()
@@ -40,7 +41,7 @@ func PlotBars(bars []MyBar, symbol string) {
 }
 
 // GetPointsFromBars converts bars into points for the plot
-func GetPointsFromBars(bars []MyBar, field string) plotter.XYs {
+func GetPointsFromBars(bars []data.MyBar, field string) plotter.XYs {
 	pts := make(plotter.XYs, len(bars))
 	for i := range pts {
 		pts[i].X = float64(bars[i].Time)
@@ -51,12 +52,12 @@ func GetPointsFromBars(bars []MyBar, field string) plotter.XYs {
 }
 
 // GetFASTMACD converts bars into points for the plot
-func GetFASTMACD(bars []MyBar) plotter.XYs {
+func GetFASTMACD(bars []data.MyBar) plotter.XYs {
 	pts := make(plotter.XYs, len(bars))
 	for i := range pts {
 		pts[i].X = float64(bars[i].Time)
 
-		pts[i].Y = float64(bars[i].macdFast)
+		pts[i].Y = float64(bars[i].MacdFast)
 	}
 	return pts
 }
