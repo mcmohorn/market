@@ -1,1 +1,5 @@
 server/vendor/
+**/.vscode/
+server/rh.txt
+server/tickers2.txt
+**/*/.DS_Store
