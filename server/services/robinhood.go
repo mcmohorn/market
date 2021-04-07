@@ -57,7 +57,6 @@ func GetMyAccount(ctx context.Context, cli *robinhood.Client, wg *sync.WaitGroup
 func GetPositions(ctx context.Context, cli *robinhood.Client, wg *sync.WaitGroup) ([]data.MyPosition, error) {
 	defer wg.Done()
 
-	fmt.Println("Getting Current Positions")
 	mypositions := make([]data.MyPosition, 0)
 
 	ps, err := cli.GetPositions(ctx)
@@ -86,6 +85,8 @@ func TradeQuantityAtPrice(ctx context.Context, cli *robinhood.Client, wg *sync.W
 	defer wg.Done()
 
 	i, _ := cli.GetInstrumentForSymbol(ctx, symbol)
+
+	fmt.Printf("Attempting to %v %v shares of %v at %.2f\n", side, uint64(quant), symbol, price)
 
 	orderOptions := robinhood.OrderOpts{
 		Price:    math.Round(price*100) / 100,

@@ -32,6 +32,7 @@ type MyPosition struct {
 	Quantity     float32
 	CurrentPrice float32
 	Instrument   *robinhood.Instrument
+	Data         SymbolData
 }
 
 type OrderEvent struct {
@@ -87,6 +88,7 @@ type AnalysisOptions struct {
 }
 
 type DayTraderOptions struct {
+	PerformTrades bool
 	Interval      int
 	MaxSharePrice float32
 	MinBuySignal  float32

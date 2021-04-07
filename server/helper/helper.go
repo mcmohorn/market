@@ -1,9 +1,10 @@
 package helper
 
 import (
-	"github.com/andrewstuart/go-robinhood"
 	"strings"
 	"time"
+
+	"github.com/andrewstuart/go-robinhood"
 )
 
 // PrettyTime converts a time to pretty date format
@@ -27,12 +28,18 @@ func IsInList(a string, list []string) bool {
 	return result
 }
 
-
 func PrettyBoughtMessage(t bool) string {
 	if t {
 		return "bought"
 	}
 	return " sold "
+}
+
+func PrettyBuy(t bool) string {
+	if t {
+		return "Buy"
+	}
+	return "Sell"
 }
 
 func PrettyBoughtMessageFromSide(t robinhood.OrderSide) string {

@@ -8,12 +8,10 @@ import (
 	"os"
 	"reflect"
 	"sort"
-	"strconv"
 	"sync"
 	"time"
 
 	"github.com/andrewstuart/go-robinhood"
-	"github.com/gdamore/tcell"
 
 	"github.com/rivo/tview"
 
@@ -38,14 +36,16 @@ type App struct {
 	alpacaClient       *alpaca.Client
 	viewApp            *tview.Application
 	viewTable          *tview.Table
-	holdingsTable      *tview.Table
+	positionsTable     *tview.Table
 	robinhoodClient    *robinhood.Client
 	minDataPointsToBuy int
 	Timeframe          string
-	symbols            []string
 	forbiddenSymbols   []string
 	currentData        []data.SymbolData
-	rhPortfolios       []*robinhood.Portfolio
+	currentPositions   []data.MyPosition
+
+	header string
+	footer string
 
 	sortSymbolAscending       bool
 	sortChangedAscending      bool
@@ -61,101 +61,68 @@ func getField(v *data.MyBar, field string) float32 {
 	return float32(f.Float())
 }
 
-func (a *App) sortCurrentDataNoAdjustment(ascending bool) {
-	// Sort by age, keeping original order or equal elements.
-	sort.SliceStable(a.currentData, func(i, j int) bool {
-		if ascending {
-			return a.currentData[i].Bars[len(a.currentData[i].Bars)-1].Diff < a.currentData[j].Bars[len(a.currentData[j].Bars)-1].Diff
-		}
-		return a.currentData[i].Bars[len(a.currentData[i].Bars)-1].Diff > a.currentData[j].Bars[len(a.currentData[j].Bars)-1].Diff
-	})
-}
-
-func (a *App) sortCurrentData(ascending bool) {
-	// Sort by age, keeping original order or equal elements.
-	sort.SliceStable(a.currentData, func(i, j int) bool {
-		if ascending {
-			return a.currentData[i].Bars[len(a.currentData[i].Bars)-1].DiffAdjusted < a.currentData[j].Bars[len(a.currentData[j].Bars)-1].DiffAdjusted
-		}
-		return a.currentData[i].Bars[len(a.currentData[i].Bars)-1].DiffAdjusted > a.currentData[j].Bars[len(a.currentData[j].Bars)-1].DiffAdjusted
-	})
-}
-
-func (a *App) sortCurrentDataNumberOfDatapoints(ascending bool) {
-	// Sort by age, keeping original order or equal elements.
-	sort.SliceStable(a.currentData, func(i, j int) bool {
-		if ascending {
-			return len(a.currentData[i].Bars) < len(a.currentData[j].Bars)
-		}
-		return len(a.currentData[i].Bars) > len(a.currentData[j].Bars)
-	})
-}
-
-func (a *App) sortCurrentDataAlphabetically(ascending bool) {
-	// Sort by age, keeping original order or equal elements.
-	sort.SliceStable(a.currentData, func(i, j int) bool {
-		if ascending {
-			return a.currentData[i].Symbol < a.currentData[j].Symbol
-		}
-		return a.currentData[i].Symbol > a.currentData[j].Symbol
-	})
-}
-
-func (a *App) sortCurrentDataByChanged(ascending bool) {
-	// Sort by age, keeping original order or equal elements.
-	sort.SliceStable(a.currentData, func(i, j int) bool {
-		if ascending {
-			return a.currentData[i].Bars[len(a.currentData[i].Bars)-1].BuySignalChanged[len(a.currentData[i].Bars[len(a.currentData[i].Bars)-1].BuySignalChanged)-1] < a.currentData[j].Bars[len(a.currentData[j].Bars)-1].BuySignalChanged[len(a.currentData[j].Bars[len(a.currentData[j].Bars)-1].BuySignalChanged)-1]
-		}
-		return a.currentData[i].Bars[len(a.currentData[i].Bars)-1].BuySignalChanged[len(a.currentData[i].Bars[len(a.currentData[i].Bars)-1].BuySignalChanged)-1] > a.currentData[j].Bars[len(a.currentData[j].Bars)-1].BuySignalChanged[len(a.currentData[j].Bars[len(a.currentData[j].Bars)-1].BuySignalChanged)-1]
-	})
-}
-
-func (a *App) sortCurrentDataNumberOfChanges(ascending bool) {
-	// Sort by age, keeping original order or equal elements.
-	sort.SliceStable(a.currentData, func(i, j int) bool {
-		if ascending {
-			return len(a.currentData[i].Bars[len(a.currentData[i].Bars)-1].BuySignalChanged) < len(a.currentData[j].Bars[len(a.currentData[j].Bars)-1].BuySignalChanged)
-		}
-		return len(a.currentData[i].Bars[len(a.currentData[i].Bars)-1].BuySignalChanged) > len(a.currentData[j].Bars[len(a.currentData[j].Bars)-1].BuySignalChanged)
-	})
-}
-
 func (a *App) StartDayTrader() {
 	options := data.DayTraderOptions{
 		Interval:      60,
 		MinCashLimit:  100,
 		MaxSharePrice: 2000,
 		MinBuySignal:  0.1,
+		PerformTrades: false,
 	}
+	a.header = "Minutely"
 	a.Timeframe = "minute"
 	a.OperateDayTrader(&options)
 
 }
 
 func (a *App) StartEndOfDayAnalysis() {
-	var wg sync.WaitGroup
+
 	options := data.AnalysisOptions{
-		Filename:          "rh.txt",
+		Filename:          "tickers2.txt",
 		Concurrency:       2,
 		Timeframe:         "1D",
 		SymbolsPerRequest: 100,
 		StartTime:         time.Now().AddDate(-1, 0, 0), // one year ago
 		EndTime:           time.Now(),                   // until today
 	}
+
+	a.header = "Daily"
+
+	var wg sync.WaitGroup
+	ctx := context.Background()
+	wg.Add(1)
+	ps, e := services.GetPositions(ctx, a.robinhoodClient, &wg)
+	wg.Wait()
+	if e != nil {
+		log.Panic(e)
+	}
+	a.currentPositions = ps
+
 	wg.Add(1)
 	data, _ := a.GrabDataAndAnalyze(&wg, &options)
 	wg.Wait()
 	a.currentData = data
 
+	a.UpdateCurrentPositionsFromCurrentData()
+
 	a.DrawTable()
 
+}
+
+func (a *App) UpdateCurrentPositionsFromCurrentData() {
+	// update our current positions with its latest Symbol Data
+	for _, d := range a.currentData {
+		for i, p := range a.currentPositions {
+			if p.Symbol == d.Symbol {
+				a.currentPositions[i].Data = d
+			}
+		}
+	}
 }
 
 // AnalyzeTickersInFile reads a file where each line is a stock ticker and analyzes the bars to return better mybars
 func (a *App) GrabDataAndAnalyze(wg *sync.WaitGroup, opts *data.AnalysisOptions) ([]data.SymbolData, error) {
 	defer wg.Done()
-	fmt.Printf("Grabbing data\n")
 	filename := opts.Filename
 	symbols := reader.ReadTickersFromFile(filename)
 	concurrency := opts.Concurrency
@@ -210,8 +177,6 @@ func (a *App) GrabDataAndAnalyze(wg *sync.WaitGroup, opts *data.AnalysisOptions)
 func (a *App) worker(id int, jobs <-chan []string, results chan<- map[string][]data.MyBar, errors chan<- error, opts *data.AnalysisOptions) {
 	for job := range jobs {
 		//fmt.Println("worker", id, "started  job", job)
-		// st := time.Now().AddDate(0, 0, -1)
-		//end := time.Now()
 		resultsMap, e := a.AnalyzeSymbols(job, opts)
 		if e != nil {
 			errors <- e
@@ -238,7 +203,6 @@ func (a *App) SimulateTrader() {
 }
 
 func (a *App) OperateDayTrader(opts *data.DayTraderOptions) {
-	fmt.Println("Starting Day Trader!")
 
 	// anything holding at the beginning of the day is off the table (assumed in rh.txt)
 	var wg sync.WaitGroup
@@ -249,11 +213,12 @@ func (a *App) OperateDayTrader(opts *data.DayTraderOptions) {
 	if e != nil {
 		log.Panic(e)
 	}
+	a.currentPositions = positions
 
 	holdSymbols := make([]string, 0)
 	for _, p := range positions {
 		fmt.Printf("%v\n", p.Symbol)
-		if p.Symbol != "NOC" {
+		if p.Symbol != "WYNN" {
 			holdSymbols = append(holdSymbols, p.Symbol)
 		}
 
@@ -263,11 +228,13 @@ func (a *App) OperateDayTrader(opts *data.DayTraderOptions) {
 	// repeatedly invoke the trading routine every x seconds
 	ticker := time.NewTicker(time.Duration(opts.Interval) * time.Second)
 	quit := make(chan struct{})
+	a.DrawTable()
 	a.DoTradingRoutine((opts))
 	for {
 		select {
 		case <-ticker.C:
 			a.DoTradingRoutine(opts)
+			a.DrawTable()
 		case <-quit:
 			ticker.Stop()
 			return
@@ -278,7 +245,6 @@ func (a *App) OperateDayTrader(opts *data.DayTraderOptions) {
 
 func (a *App) DoTradingRoutine(opts *data.DayTraderOptions) {
 
-	fmt.Println("Commencing Trading Routine")
 	var wg sync.WaitGroup
 	// Step 1: pull data from alpaca / compute emas
 	analysisOptions := data.AnalysisOptions{
@@ -311,7 +277,7 @@ func (a *App) DoTradingRoutine(opts *data.DayTraderOptions) {
 		// find matching SymbolData in the current data
 		for _, x := range a.currentData {
 			if x.Symbol == p.Symbol {
-				if x.CurrentBuySignal {
+				if x.CurrentBuySignal && opts.PerformTrades {
 					// sell this holding
 					wg.Add(1)
 					services.TradeQuantityAtPrice(ctx, a.robinhoodClient, &wg, a.DB, p.Symbol, p.Quantity, float64(p.CurrentPrice), robinhood.Sell)
@@ -327,14 +293,11 @@ func (a *App) DoTradingRoutine(opts *data.DayTraderOptions) {
 	account, _ := services.GetMyAccount(ctx, a.robinhoodClient, &wg)
 	wg.Wait() // wait for account to be retrieved
 
-	fmt.Printf("here and %v\n", len(a.currentData))
 	// sort data by best buy signals
 	sort.SliceStable(a.currentData, func(k, j int) bool {
 		return a.currentData[k].Bars[len(a.currentData[k].Bars)-1].DiffAdjusted < a.currentData[j].Bars[len(a.currentData[j].Bars)-1].DiffAdjusted
 	})
 
-	fmt.Printf("here now %v\n", len(a.currentData))
-	fmt.Printf("buying power %v\n", account.BuyingPower)
 	max := float32(0.0)
 
 	bestIndex := -1
@@ -350,9 +313,7 @@ func (a *App) DoTradingRoutine(opts *data.DayTraderOptions) {
 		}
 	}
 
-	fmt.Printf("%v, %0.8f, cash=%v\n", bestIndex, max, account.BuyingPower)
-
-	balanceAvailable := account.BuyingPower - 1000
+	balanceAvailable := account.MarginBalances.DayTradeBuyingPower
 
 	if float32(balanceAvailable) > opts.MinCashLimit && bestIndex > -1 {
 		// buy as much as we can of the good stuff if we have cash
@@ -364,7 +325,7 @@ func (a *App) DoTradingRoutine(opts *data.DayTraderOptions) {
 
 		// fmt.Printf("trying to buy %v of  %v at %v\n", canBuy, a.currentData[bestIndex].Symbol, limitPrice)
 
-		if canBuy > 0 {
+		if canBuy > 0 && opts.PerformTrades {
 			wg.Add(1)
 			services.TradeQuantityAtPrice(ctx, a.robinhoodClient, &wg, a.DB, a.currentData[bestIndex].Symbol, float32(canBuy), float64(limitPrice), robinhood.Buy)
 			wg.Wait()
@@ -376,108 +337,6 @@ func (a *App) DoTradingRoutine(opts *data.DayTraderOptions) {
 func (a *App) Stop() {
 	fmt.Println("Ending matts market, have a good day!")
 	os.Exit(2)
-}
-
-func (a *App) UpdateTableData() {
-	a.viewTable.Clear()
-	a.DrawTableHeaders()
-
-	for _, s := range a.currentData {
-		// set ticker column
-		if len(s.Bars) > 0 {
-			row := a.viewTable.GetRowCount()
-			lastBar := s.Bars[len(s.Bars)-1]
-			buymsg := "Buy"
-			if !s.Bars[len(s.Bars)-1].BuySignal {
-				buymsg = "Sell"
-			}
-			changedTimestamp := lastBar.BuySignalChanged[len(lastBar.BuySignalChanged)-1]
-			changedTime := time.Unix(changedTimestamp, 0)
-			diff := lastBar.MacdFast - lastBar.MacdSlow
-
-			a.viewTable.SetCell(row, 0, tview.NewTableCell(s.Symbol).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignCenter))
-			a.viewTable.SetCell(row, 1, tview.NewTableCell(buymsg).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignRight))
-			a.viewTable.SetCell(row, 2, tview.NewTableCell(changedTime.Format("1-2-06")).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignRight))
-			a.viewTable.SetCell(row, 3, tview.NewTableCell(strconv.Itoa(len(lastBar.BuySignalChanged))).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignCenter))
-			a.viewTable.SetCell(row, 4, tview.NewTableCell(fmt.Sprintf("%.2f", diff)).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignCenter))
-			a.viewTable.SetCell(row, 5, tview.NewTableCell(fmt.Sprintf("%.2f", lastBar.DiffAdjusted)).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignCenter))
-			a.viewTable.SetCell(row, 6, tview.NewTableCell(fmt.Sprintf("%v", len(s.Bars))).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignCenter))
-
-		}
-
-	}
-}
-
-func (a *App) DrawTableHeaders() {
-	a.viewTable.SetCell(0, 0, tview.NewTableCell("Symbol").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
-	a.viewTable.SetCell(0, 1, tview.NewTableCell("Action").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
-	a.viewTable.SetCell(0, 2, tview.NewTableCell("Changed").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
-	a.viewTable.SetCell(0, 3, tview.NewTableCell("changes").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
-	a.viewTable.SetCell(0, 4, tview.NewTableCell("diff").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
-	a.viewTable.SetCell(0, 5, tview.NewTableCell("diffA").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
-	//a.viewTable.SetCell(0, 6, tview.NewTableCell("").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
-	a.viewTable.SetCell(0, 6, tview.NewTableCell("n").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
-}
-
-// DrawTable draws this app's symbol data
-func (a *App) DrawTable() {
-	a.sortCurrentData(false)
-
-	a.UpdateTableData()
-
-	a.viewTable.Select(0, 0).SetFixed(1, 1).SetDoneFunc(func(key tcell.Key) {
-		if key == tcell.KeyEscape {
-			a.viewApp.Stop()
-			a.Stop()
-		}
-		if key == tcell.KeyEnter {
-			a.viewTable.SetSelectable(true, true)
-		}
-	}).SetSelectedFunc(func(row int, column int) {
-		if column == 0 {
-			a.sortSymbolAscending = !a.sortSymbolAscending
-			a.sortCurrentDataAlphabetically(a.sortSymbolAscending)
-			a.UpdateTableData()
-		}
-
-		if column == 2 {
-			a.sortChangedAscending = !a.sortChangedAscending
-			a.sortCurrentDataByChanged(a.sortChangedAscending)
-			a.UpdateTableData()
-		}
-
-		if column == 3 {
-			a.sortNChangesAscending = !a.sortNChangesAscending
-			a.sortCurrentDataNumberOfChanges(a.sortNChangesAscending)
-			a.UpdateTableData()
-		}
-
-		if column == 4 {
-			a.sortDiffAscending = !a.sortDiffAscending
-			a.sortCurrentDataNoAdjustment(a.sortDiffAscending)
-			a.UpdateTableData()
-		}
-
-		if column == 5 {
-			a.sortDiffAdjustedAscending = !a.sortDiffAdjustedAscending
-			a.sortCurrentData(a.sortDiffAdjustedAscending)
-			a.UpdateTableData()
-		}
-
-		if column == 6 {
-			a.sortNAscending = !a.sortNAscending
-			a.sortCurrentDataNumberOfDatapoints(a.sortNAscending)
-			a.UpdateTableData()
-		}
-
-		// a.viewTable.GetCell(row, column).SetTextColor(tcell.ColorRed)
-		// a.viewTable.SetSelectable(false, false)
-	})
-
-	// make the table the current view of the application
-	if err := a.viewApp.SetRoot(a.viewTable, true).SetFocus(a.viewTable).Run(); err != nil {
-		panic(err)
-	}
 }
 
 // AnalyzeSymbols will run analysis on a list of stock symbols
@@ -614,6 +473,7 @@ func (a *App) Initialize(c *config.Config, wg *sync.WaitGroup) {
 		log.Fatal("Could not connect database")
 	}
 	a.DB = db
+	a.footer = "Ctrl-X: Exit"
 	a.currentData = make([]data.SymbolData, 0)
 	a.minDataPointsToBuy = 30
 	a.alpacaClient = alpaca.NewClient(common.Credentials())
@@ -622,17 +482,8 @@ func (a *App) Initialize(c *config.Config, wg *sync.WaitGroup) {
 
 	a.viewApp = tview.NewApplication()
 	a.viewTable = tview.NewTable().SetBorders(false).SetSeparator(tview.Borders.Vertical)
+	a.positionsTable = tview.NewTable().SetBorders(false).SetSeparator(tview.Borders.Vertical)
 
-	a.viewTable.Select(0, 0).SetFixed(1, 1).SetDoneFunc(func(key tcell.Key) {
-		if key == tcell.KeyEscape {
-			a.viewApp.Stop()
-		}
-		if key == tcell.KeyEnter {
-			a.viewTable.SetSelectable(true, false)
-		}
-	}).SetSelectedFunc(func(row int, column int) {
-		a.viewTable.GetCell(row, column).SetTextColor(tcell.ColorRed)
-		a.viewTable.SetSelectable(false, false)
-	})
+	a.DrawWelcomeScreen()
 
 }

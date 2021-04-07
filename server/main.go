@@ -33,7 +33,7 @@ func main() {
 	app.Initialize(config, &initWG)
 	initWG.Wait()
 
-	app.StartEndOfDayAnalysis()
+	//app.StartEndOfDayAnalysis()
 	//app.StartDayTrader()
 
 }
