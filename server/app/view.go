@@ -64,12 +64,11 @@ func (a *App) DrawWelcomeScreen() {
 
 	a.SetupInputs()
 
-	// menu.Focus()
-
 	// grid is the basis of the view
-	if err := a.viewApp.SetRoot(grid, true).EnableMouse(true).Run(); err != nil {
+	if err := a.viewApp.SetRoot(grid, true).SetFocus(menu).EnableMouse(true).Run(); err != nil {
 		panic(err)
 	}
+
 }
 
 func (a *App) SetupInputs() {
@@ -78,6 +77,9 @@ func (a *App) SetupInputs() {
 			a.StopGracefully()
 			return nil
 		} else if event.Key() == tcell.KeyEnter {
+			return nil
+		} else if event.Key() == tcell.KeyEscape {
+			a.DrawWelcomeScreen()
 			return nil
 		}
 
