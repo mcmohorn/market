@@ -36,16 +36,20 @@ type App struct {
 	alpacaClient       *alpaca.Client
 	viewApp            *tview.Application
 	viewTable          *tview.Table
+	accountTable       *tview.Table
 	positionsTable     *tview.Table
+	statusText         *tview.TextView
 	robinhoodClient    *robinhood.Client
 	minDataPointsToBuy int
 	Timeframe          string
 	forbiddenSymbols   []string
 	currentData        []data.SymbolData
 	currentPositions   []data.MyPosition
+	account            robinhood.Account
 
 	header string
 	footer string
+	status string
 
 	sortSymbolAscending       bool
 	sortChangedAscending      bool
@@ -64,10 +68,10 @@ func getField(v *data.MyBar, field string) float32 {
 func (a *App) StartDayTrader() {
 	options := data.DayTraderOptions{
 		Interval:      60,
-		MinCashLimit:  100,
+		MinCashLimit:  5,
 		MaxSharePrice: 2000,
-		MinBuySignal:  0.1,
-		PerformTrades: false,
+		MinBuySignal:  0.001,
+		PerformTrades: true,
 	}
 	a.header = "Minutely"
 	a.Timeframe = "minute"
@@ -77,6 +81,7 @@ func (a *App) StartDayTrader() {
 
 func (a *App) StartEndOfDayAnalysis() {
 
+	go a.DrawTable()
 	options := data.AnalysisOptions{
 		Filename:          "tickers2.txt",
 		Concurrency:       2,
@@ -86,7 +91,7 @@ func (a *App) StartEndOfDayAnalysis() {
 		EndTime:           time.Now(),                   // until today
 	}
 
-	a.header = "Daily"
+	a.SetAppStatus("Getting Positions")
 
 	var wg sync.WaitGroup
 	ctx := context.Background()
@@ -97,14 +102,26 @@ func (a *App) StartEndOfDayAnalysis() {
 		log.Panic(e)
 	}
 	a.currentPositions = ps
+	a.UpdatePositionsTableData()
+	go a.DrawTable()
 
+	a.SetAppStatus("Getting Account")
+	wg.Add(1)
+	account, _ := services.GetMyAccount(ctx, a.robinhoodClient, &wg)
+	a.account = account
+	wg.Wait() // wait for account to be retrieved
+
+	a.UpdateAccountTableData()
+
+	a.SetAppStatus("Grabbing Data")
+	go a.DrawTable()
 	wg.Add(1)
 	data, _ := a.GrabDataAndAnalyze(&wg, &options)
 	wg.Wait()
 	a.currentData = data
 
 	a.UpdateCurrentPositionsFromCurrentData()
-
+	a.SetAppStatus("EOD Analysis Complete")
 	a.DrawTable()
 
 }
@@ -118,6 +135,11 @@ func (a *App) UpdateCurrentPositionsFromCurrentData() {
 			}
 		}
 	}
+}
+
+func (a *App) SetAppStatus(status string) {
+	a.status = status
+	a.statusText.SetText(status)
 }
 
 // AnalyzeTickersInFile reads a file where each line is a stock ticker and analyzes the bars to return better mybars
@@ -218,7 +240,7 @@ func (a *App) OperateDayTrader(opts *data.DayTraderOptions) {
 	holdSymbols := make([]string, 0)
 	for _, p := range positions {
 		fmt.Printf("%v\n", p.Symbol)
-		if p.Symbol != "WYNN" {
+		if p.Symbol != "HST" && p.Symbol != "COTY" && p.Symbol != "SYY" {
 			holdSymbols = append(holdSymbols, p.Symbol)
 		}
 
@@ -228,13 +250,13 @@ func (a *App) OperateDayTrader(opts *data.DayTraderOptions) {
 	// repeatedly invoke the trading routine every x seconds
 	ticker := time.NewTicker(time.Duration(opts.Interval) * time.Second)
 	quit := make(chan struct{})
-	a.DrawTable()
+	// a.DrawTable()
 	a.DoTradingRoutine((opts))
 	for {
 		select {
 		case <-ticker.C:
 			a.DoTradingRoutine(opts)
-			a.DrawTable()
+			// a.DrawTable()
 		case <-quit:
 			ticker.Stop()
 			return
@@ -245,6 +267,7 @@ func (a *App) OperateDayTrader(opts *data.DayTraderOptions) {
 
 func (a *App) DoTradingRoutine(opts *data.DayTraderOptions) {
 
+	fmt.Println("Doing trading routine")
 	var wg sync.WaitGroup
 	// Step 1: pull data from alpaca / compute emas
 	analysisOptions := data.AnalysisOptions{
@@ -277,7 +300,7 @@ func (a *App) DoTradingRoutine(opts *data.DayTraderOptions) {
 		// find matching SymbolData in the current data
 		for _, x := range a.currentData {
 			if x.Symbol == p.Symbol {
-				if x.CurrentBuySignal && opts.PerformTrades {
+				if x.CurrentBuySignal && opts.PerformTrades && p.Quantity > 0 {
 					// sell this holding
 					wg.Add(1)
 					services.TradeQuantityAtPrice(ctx, a.robinhoodClient, &wg, a.DB, p.Symbol, p.Quantity, float64(p.CurrentPrice), robinhood.Sell)
@@ -291,6 +314,7 @@ func (a *App) DoTradingRoutine(opts *data.DayTraderOptions) {
 	// use remaining buying power in portfolio to purchase as much of the best
 	wg.Add(1)
 	account, _ := services.GetMyAccount(ctx, a.robinhoodClient, &wg)
+	a.account = account
 	wg.Wait() // wait for account to be retrieved
 
 	// sort data by best buy signals
@@ -299,11 +323,13 @@ func (a *App) DoTradingRoutine(opts *data.DayTraderOptions) {
 	})
 
 	max := float32(0.0)
+	balanceAvailable := float32(account.CashAvailableForWithdrawal)
 
 	bestIndex := -1
 	for j := 0; j < len(a.currentData); j++ {
 		if a.currentData[j].Bars[len(a.currentData[j].Bars)-1].Diff > opts.MinBuySignal &&
 			a.currentData[j].Bars[len(a.currentData[j].Bars)-1].Price < opts.MaxSharePrice &&
+			a.currentData[j].Bars[len(a.currentData[j].Bars)-1].Price < balanceAvailable &&
 			a.currentData[j].Bars[len(a.currentData[j].Bars)-1].BuySignal &&
 			a.currentData[j].Bars[len(a.currentData[j].Bars)-1].Price < float32(account.BuyingPower) {
 			bestIndex = j
@@ -313,7 +339,10 @@ func (a *App) DoTradingRoutine(opts *data.DayTraderOptions) {
 		}
 	}
 
-	balanceAvailable := account.MarginBalances.DayTradeBuyingPower
+	fmt.Printf("max signal was %v\n", max, bestIndex)
+
+	fmt.Printf("available : %v\n", balanceAvailable)
+	fmt.Printf("account : %+v\n", a.account)
 
 	if float32(balanceAvailable) > opts.MinCashLimit && bestIndex > -1 {
 		// buy as much as we can of the good stuff if we have cash
@@ -336,7 +365,7 @@ func (a *App) DoTradingRoutine(opts *data.DayTraderOptions) {
 
 func (a *App) Stop() {
 	fmt.Println("Ending matts market, have a good day!")
-	os.Exit(2)
+	os.Exit(0)
 }
 
 // AnalyzeSymbols will run analysis on a list of stock symbols
@@ -472,6 +501,7 @@ func (a *App) Initialize(c *config.Config, wg *sync.WaitGroup) {
 	if err != nil {
 		log.Fatal("Could not connect database")
 	}
+	a.status = "Initializing"
 	a.DB = db
 	a.footer = "Ctrl-X: Exit"
 	a.currentData = make([]data.SymbolData, 0)
@@ -482,8 +512,15 @@ func (a *App) Initialize(c *config.Config, wg *sync.WaitGroup) {
 
 	a.viewApp = tview.NewApplication()
 	a.viewTable = tview.NewTable().SetBorders(false).SetSeparator(tview.Borders.Vertical)
+	a.accountTable = tview.NewTable().SetBorders(false).SetSeparator(tview.Borders.Vertical)
 	a.positionsTable = tview.NewTable().SetBorders(false).SetSeparator(tview.Borders.Vertical)
+	a.statusText = tview.NewTextView().
+		SetTextAlign(tview.AlignCenter).
+		SetText(a.status)
 
-	a.DrawWelcomeScreen()
+}
 
+func (a *App) StopGracefully() {
+	a.viewApp.Stop()
+	a.Stop()
 }

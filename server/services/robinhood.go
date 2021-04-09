@@ -48,7 +48,6 @@ func GetMyAccount(ctx context.Context, cli *robinhood.Client, wg *sync.WaitGroup
 		e = errors.New("No RH accounts found")
 		return
 	}
-	fmt.Printf("my account: %v\n", as[0].AccountNumber)
 
 	return as[0], nil
 
@@ -111,6 +110,6 @@ func TradeQuantityAtPrice(ctx context.Context, cli *robinhood.Client, wg *sync.W
 	db.CreateEvent(ctx, DB, newevent)
 
 	// this log is misleading, really just submitted an order but ok for now
-	fmt.Printf("%v %v shares of %v at $.2%f\n", helper.PrettyBoughtMessageFromSide(side), orderOutput.Quantity, i.Symbol, orderOutput.Price)
+	fmt.Printf("%v %v shares of %v at %.2f\n", helper.PrettyBoughtMessageFromSide(side), orderOutput.Quantity, i.Symbol, orderOutput.Price)
 	return orderOutput, err
 }

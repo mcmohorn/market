@@ -35,5 +35,6 @@ func main() {
 
 	//app.StartEndOfDayAnalysis()
 	//app.StartDayTrader()
+	app.DrawWelcomeScreen()
 
 }
