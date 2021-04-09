@@ -224,20 +224,21 @@ func (a *App) UpdatePositionsTableData() {
 	a.DrawPositionsTableHeaders()
 	sum := float32(0)
 	for _, p := range a.currentPositions {
-		row := a.positionsTable.GetRowCount()
-		a.positionsTable.SetCell(row, 0, tview.NewTableCell(p.Symbol).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignLeft))
-		if p.Quantity > 0 {
-
-			a.positionsTable.SetCell(row, 1, tview.NewTableCell(fmt.Sprintf("%.0f", p.Quantity)).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignRight))
-		} else {
-
-			a.positionsTable.SetCell(row, 1, tview.NewTableCell(fmt.Sprintf("%.0f", p.Quantity)).SetTextColor(tcell.ColorYellow).SetAlign(tview.AlignRight))
+		rowColor := tcell.ColorWhite
+		if helper.IsInList(p.Symbol, a.forbiddenSymbols) {
+			rowColor = tcell.ColorGhostWhite
 		}
-		a.positionsTable.SetCell(row, 2, tview.NewTableCell(fmt.Sprintf("%.2f", p.CurrentPrice)).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignRight))
+		if p.Quantity == 0 {
+			rowColor = tcell.ColorYellow
+		}
+		row := a.positionsTable.GetRowCount()
+		a.positionsTable.SetCell(row, 0, tview.NewTableCell(p.Symbol).SetTextColor(rowColor).SetAlign(tview.AlignLeft))
+		a.positionsTable.SetCell(row, 1, tview.NewTableCell(fmt.Sprintf("%.0f", p.Quantity)).SetTextColor(rowColor).SetAlign(tview.AlignRight))
+		a.positionsTable.SetCell(row, 2, tview.NewTableCell(fmt.Sprintf("%.2f", p.CurrentPrice)).SetTextColor(rowColor).SetAlign(tview.AlignRight))
 		sum = sum + (p.CurrentPrice * p.Quantity)
-		a.positionsTable.SetCell(row, 3, tview.NewTableCell(fmt.Sprintf("%.2f", p.CurrentPrice*p.Quantity)).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignRight))
+		a.positionsTable.SetCell(row, 3, tview.NewTableCell(fmt.Sprintf("%.2f", p.CurrentPrice*p.Quantity)).SetTextColor(rowColor).SetAlign(tview.AlignRight))
 		if len(p.Data.Bars) > 0 {
-			a.positionsTable.SetCell(row, 4, tview.NewTableCell(helper.PrettyBuy(p.Data.Bars[len(p.Data.Bars)-1].BuySignal)).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignRight))
+			a.positionsTable.SetCell(row, 4, tview.NewTableCell(helper.PrettyBuy(p.Data.Bars[len(p.Data.Bars)-1].BuySignal)).SetTextColor(rowColor).SetAlign(tview.AlignRight))
 		}
 
 	}
