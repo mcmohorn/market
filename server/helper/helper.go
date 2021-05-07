@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/andrewstuart/go-robinhood"
+	"astuart.co/go-robinhood"
 )
 
 // PrettyTime converts a time to pretty date format
@@ -47,6 +47,10 @@ func PrettyBoughtMessageFromSide(t robinhood.OrderSide) string {
 		return "bought"
 	}
 	return "sold  "
+}
+
+func TimeToString(t *time.Time) string {
+	return t.Format("2006-01-02 15:04")
 }
 
 func LeftPad2Len(s string, padStr string, overallLen int) string {

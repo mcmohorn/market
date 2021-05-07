@@ -3,8 +3,8 @@ package data
 import (
 	"time"
 
+	"astuart.co/go-robinhood"
 	"github.com/alpacahq/alpaca-trade-api-go/alpaca"
-	"github.com/andrewstuart/go-robinhood"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -83,6 +83,7 @@ type AnalysisOptions struct {
 	Concurrency       int
 	SymbolsPerRequest int
 	PrintSymbolMath   bool
+	IsCrypto          bool
 	StartTime         time.Time
 	EndTime           time.Time
 }

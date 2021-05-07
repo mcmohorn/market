@@ -2,6 +2,8 @@ package app
 
 import (
 	"sort"
+
+	"github.com/mcmohorn/market/server/data"
 )
 
 func (a *App) sortCurrentDataNoAdjustment(ascending bool) {
@@ -21,6 +23,16 @@ func (a *App) sortCurrentData(ascending bool) {
 			return a.currentData[i].Bars[len(a.currentData[i].Bars)-1].DiffAdjusted < a.currentData[j].Bars[len(a.currentData[j].Bars)-1].DiffAdjusted
 		}
 		return a.currentData[i].Bars[len(a.currentData[i].Bars)-1].DiffAdjusted > a.currentData[j].Bars[len(a.currentData[j].Bars)-1].DiffAdjusted
+	})
+}
+
+func (a *App) sortData(inputData []data.SymbolData, ascending bool) {
+	// Sort by age, keeping original order or equal elements.
+	sort.SliceStable(inputData, func(i, j int) bool {
+		if ascending {
+			return inputData[i].Bars[len(inputData[i].Bars)-1].DiffAdjusted < inputData[j].Bars[len(inputData[j].Bars)-1].DiffAdjusted
+		}
+		return inputData[i].Bars[len(inputData[i].Bars)-1].DiffAdjusted > inputData[j].Bars[len(inputData[j].Bars)-1].DiffAdjusted
 	})
 }
 

@@ -1,7 +1,6 @@
 package services
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -9,15 +8,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/andrewstuart/go-robinhood"
+	"astuart.co/go-robinhood"
 	"github.com/mcmohorn/market/server/data"
-	"github.com/mcmohorn/market/server/db"
 	"github.com/mcmohorn/market/server/helper"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-func InitializeRobinhoodClient(ctx context.Context) (*robinhood.Client, error) {
-	cli, err := robinhood.Dial(ctx, &robinhood.OAuth{
+func InitializeRobinhoodClient() (*robinhood.Client, error) {
+	cli, err := robinhood.Dial(&robinhood.OAuth{
 		Username: os.Getenv("RH_USERNAME"),
 		Password: os.Getenv("RH_PASSWORD"),
 	})
@@ -25,8 +23,8 @@ func InitializeRobinhoodClient(ctx context.Context) (*robinhood.Client, error) {
 	return cli, err
 }
 
-func GetMyAccounts(ctx context.Context, cli *robinhood.Client) ([]robinhood.Account, error) {
-	as, err := cli.GetAccounts(ctx)
+func GetMyAccounts(cli *robinhood.Client) ([]robinhood.Account, error) {
+	as, err := cli.GetAccounts()
 	if err != nil {
 		return nil, err
 	}
@@ -38,9 +36,9 @@ func GetMyAccounts(ctx context.Context, cli *robinhood.Client) ([]robinhood.Acco
 
 }
 
-func GetMyAccount(ctx context.Context, cli *robinhood.Client, wg *sync.WaitGroup) (acct robinhood.Account, e error) {
+func GetMyAccount(cli *robinhood.Client, wg *sync.WaitGroup) (acct robinhood.Account, e error) {
 	defer wg.Done()
-	as, e := cli.GetAccounts(ctx)
+	as, e := cli.GetAccounts()
 	if e != nil {
 		return
 	}
@@ -53,25 +51,38 @@ func GetMyAccount(ctx context.Context, cli *robinhood.Client, wg *sync.WaitGroup
 
 }
 
-func GetPositions(ctx context.Context, cli *robinhood.Client, wg *sync.WaitGroup) ([]data.MyPosition, error) {
+func GetPositions(cli *robinhood.Client, wg *sync.WaitGroup, acc robinhood.Account) ([]data.MyPosition, error) {
 	defer wg.Done()
 
 	mypositions := make([]data.MyPosition, 0)
 
-	ps, err := cli.GetPositions(ctx)
+	acc.User = "https://" + acc.User
+
+	as, err := cli.GetAccounts()
+	if err != nil {
+		return nil, err
+	}
+
+	as[0].User = "https://" + as[0].User
+	as[0].Positions = "https://api.robinhood.com/positions/"
+
+	ps, err := cli.GetPositions(as[0])
 
 	if err != nil {
 		return nil, err
 	}
 	for _, p := range ps {
-		i, _ := cli.GetInstrument(ctx, p.Instrument)
-		qs, _ := cli.GetQuote(ctx, i.Symbol)
-		mypositions = append(mypositions, data.MyPosition{
-			Symbol:       i.Symbol,
-			Quantity:     float32(p.Quantity),
-			CurrentPrice: float32(qs[0].LastTradePrice),
-			Instrument:   i,
-		})
+		if p.Quantity > 0 {
+			i, _ := cli.GetInstrument(p.Instrument)
+			qs, _ := cli.GetQuote(i.Symbol)
+			mypositions = append(mypositions, data.MyPosition{
+				Symbol:       i.Symbol,
+				Quantity:     float32(p.Quantity),
+				CurrentPrice: float32(qs[0].LastTradePrice),
+				Instrument:   i,
+			})
+		}
+
 		// fmt.Printf("%5v | %5v * %v\n", i.Symbol, p.Quantity, qs[0].LastTradePrice, )
 	}
 	return mypositions, err
@@ -79,11 +90,11 @@ func GetPositions(ctx context.Context, cli *robinhood.Client, wg *sync.WaitGroup
 }
 
 // TradeQuantityAtPrice calls robinhood trade api to submit an order to buy / sell
-func TradeQuantityAtPrice(ctx context.Context, cli *robinhood.Client, wg *sync.WaitGroup, DB *mongo.Database, symbol string, quant float32, price float64, side robinhood.OrderSide) (*robinhood.OrderOutput, error) {
+func TradeQuantityAtPrice(cli *robinhood.Client, wg *sync.WaitGroup, DB *mongo.Database, symbol string, quant float32, price float64, side robinhood.OrderSide) (*robinhood.OrderOutput, error) {
 
 	defer wg.Done()
 
-	i, _ := cli.GetInstrumentForSymbol(ctx, symbol)
+	i, _ := cli.GetInstrumentForSymbol(symbol)
 
 	fmt.Printf("Attempting to %v %v shares of %v at %.2f\n", side, uint64(quant), symbol, price)
 
@@ -98,7 +109,7 @@ func TradeQuantityAtPrice(ctx context.Context, cli *robinhood.Client, wg *sync.W
 		Quantity: quant,
 	}
 
-	orderOutput, err := cli.Order(ctx, i, orderOptions)
+	orderOutput, err := cli.Order(i, orderOptions)
 
 	newevent.Completed = time.Now().Unix()
 	newevent.ErrorMessage = orderOutput.RejectReason
@@ -107,7 +118,7 @@ func TradeQuantityAtPrice(ctx context.Context, cli *robinhood.Client, wg *sync.W
 		fmt.Printf("Error with order: %v", err)
 	}
 
-	db.CreateEvent(ctx, DB, newevent)
+	// db.CreateEvent(ctx, DB, newevent)
 
 	// this log is misleading, really just submitted an order but ok for now
 	fmt.Printf("%v %v shares of %v at %.2f\n", helper.PrettyBoughtMessageFromSide(side), orderOutput.Quantity, i.Symbol, orderOutput.Price)

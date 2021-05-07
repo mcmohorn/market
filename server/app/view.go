@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 	"github.com/mcmohorn/market/server/helper"
 	"github.com/rivo/tview"
 )
@@ -15,6 +15,11 @@ func newPrimitive(text string) tview.Primitive {
 	return tview.NewTextView().
 		SetTextAlign(tview.AlignCenter).
 		SetText(text)
+}
+func newPrimitiveWithColor(text string, col tcell.Color) tview.Primitive {
+	return tview.NewTextView().
+		SetTextAlign(tview.AlignCenter).
+		SetText(text).SetTextColor(col)
 }
 
 const computerArt = ` ______________
@@ -29,65 +34,116 @@ const computerArt = ` ______________
    	\      ____    \   
       \_____\___\____\`
 
+const computerArt1 = `______________________
+|                      |
+|      M ax            |
+|      A sset          |
+|      T trade         |
+|      E engine        |
+|      O ptimizer      |
+|______________________|
+|______________________|
+  \ --------------------- \
+   \ --------------------  \
+   \ --------------------- \
+    \ --------------------- \
+	 \       \        \      \
+	  \_______\________\______\`
+
+func (a *App) MakeWelcomeSelection(n int) {
+	switch n {
+	case 1:
+		a.StartEndOfDayAnalysis()
+	case 2:
+		a.CryptoExperience()
+	}
+}
+
 // DrawWelcomeScreen draws the welcome screen
 func (a *App) DrawWelcomeScreen() {
 
 	tv := tview.NewTextView().
 		SetDynamicColors(true).
+		SetTextColor(tcell.ColorGold).
 		SetRegions(true).
-		SetWordWrap(true).
-		SetText("Maximized\n\nAlgorithms for\n\nTrading\n\nEfficiently and\n\nOptimally")
+		SetWordWrap(true).SetTextAlign(tview.AlignCenter).
+		SetText("Maximized Algorithms for Trading Efficiently and Optimally")
 
 	menu := tview.NewList().
-		AddItem("Aftermarket Summary", "today's summary", '1', func() {
-			a.StartEndOfDayAnalysis()
+		AddItem("Stocks", "", '1', func() {
+			a.MakeWelcomeSelection(1)
 		}).
-		AddItem("Day Trader", "automatic trading", '2', func() {
-			a.StartDayTrader()
+		AddItem("Crypto", "", '2', func() {
+			a.MakeWelcomeSelection(2)
 		}).
-		AddItem("Quit", "Press to exit", 'q', func() {
+		AddItem("Exit", "", 'x', func() {
 			a.StopGracefully()
-		})
+		}).SetSelectedFunc(func(i int, b string, c string, d rune) {
+		a.MakeWelcomeSelection(i)
+	})
+
 	grid := tview.NewGrid().
-		SetRows(5, 1, 0, 1, 0, 1).
-		SetColumns(1, 0, 30, 0, 0, 1).
+		SetRows(1, 0, 1).
+		SetColumns(1, 0, 0, 1).
 		SetBorders(false).
-		AddItem(newPrimitive(""), 0, 0, 1, 6, 0, 0, false).
-		AddItem(newPrimitive(""), 1, 0, 1, 6, 0, 0, false).
-		AddItem(newPrimitive(""), 2, 0, 1, 2, 0, 0, false).
-		AddItem(newPrimitive(computerArt), 2, 2, 1, 1, 0, 0, false).
-		AddItem(tv, 2, 3, 1, 1, 0, 0, false).
-		AddItem(newPrimitive(""), 2, 5, 1, 1, 0, 0, false).
-		AddItem(menu, 2, 4, 1, 1, 0, 0, false).
-		AddItem(newPrimitive("Any key to start"), 3, 0, 1, 6, 0, 0, false).
-		AddItem(newPrimitive(a.footer), 4, 0, 1, 6, 0, 0, false)
+		AddItem(newPrimitiveWithColor(computerArt, tcell.ColorSilver), 1, 1, 1, 1, 0, 0, false).
+		AddItem(menu, 1, 2, 1, 1, 0, 0, false).
+		AddItem(tv, 0, 1, 1, 1, 0, 0, false)
 
 	a.SetupInputs()
 
+	a.baseGrid = grid
+
 	// grid is the basis of the view
-	if err := a.viewApp.SetRoot(grid, true).SetFocus(menu).EnableMouse(true).Run(); err != nil {
+	if err := a.viewApp.SetRoot(a.baseGrid, true).SetFocus(menu).EnableMouse(true).Run(); err != nil {
 		panic(err)
 	}
 
 }
 
-func (a *App) SetupInputs() {
-	a.viewApp.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyCtrlX {
+// MainMenuKeys controls inputs when the main menu is showing
+func (a *App) MainMenuKeys(event *tcell.EventKey) *tcell.EventKey {
+	switch event.Key() {
+	case tcell.KeyEnter:
+		break
+	case tcell.KeyEscape:
+		a.DrawWelcomeScreen()
+		return nil
+	case tcell.KeyRune:
+		switch event.Rune() {
+		case 'x':
 			a.StopGracefully()
-			return nil
-		} else if event.Key() == tcell.KeyEnter {
-			return nil
-		} else if event.Key() == tcell.KeyEscape {
-			a.DrawWelcomeScreen()
-			return nil
+		default:
 		}
+	}
 
-		return event
-	})
+	return event
 }
 
-// DrawTable draws this app's symbol data
+// TableKeys controls inputs for when a table is showing
+func (a *App) TableKeys(event *tcell.EventKey) *tcell.EventKey {
+	switch event.Key() {
+	case tcell.KeyEnter:
+		break
+	case tcell.KeyEscape:
+		a.DrawWelcomeScreen()
+		return nil
+	case tcell.KeyRune:
+		switch event.Rune() {
+		case 'x':
+			a.StopGracefully()
+		default:
+		}
+	}
+
+	return event
+}
+
+func (a *App) SetupInputs() {
+	a.viewApp.SetInputCapture(a.TableKeys)
+}
+
+// DrawTable draws basic table
 func (a *App) DrawTable() {
 
 	a.sortCurrentData(false)
@@ -95,6 +151,7 @@ func (a *App) DrawTable() {
 	a.UpdatePositionsTableData()
 	a.UpdateAccountTableData()
 	a.UpdateTableData()
+	//a.UpdateCryptoTableData()
 
 	a.viewTable.Select(0, 0).SetFixed(1, 1).SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEscape {
@@ -143,15 +200,9 @@ func (a *App) DrawTable() {
 		}
 	})
 
-	newPrimitive := func(text string) tview.Primitive {
-		return tview.NewTextView().
-			SetTextAlign(tview.AlignCenter).
-			SetText(text)
-	}
-
 	grid := tview.NewGrid().
 		SetRows(2, 0, 1).
-		SetColumns(40, 0, 30).
+		SetColumns(40, 0).
 		SetBorders(true).
 		AddItem(a.statusText, 0, 0, 1, 3, 0, 0, false).
 		AddItem(newPrimitive(a.footer), 2, 0, 1, 3, 0, 0, false)
@@ -164,14 +215,7 @@ func (a *App) DrawTable() {
 		AddItem(newPrimitive("Positions"), 0, 0, 1, 1, 0, 0, false).
 		AddItem(a.positionsTable, 1, 0, 1, 1, 0, 0, false)
 
-	accountSection := tview.NewGrid().
-		SetRows(1, 0).
-		SetColumns(0).
-		SetBorders(false).
-		AddItem(newPrimitive("Account"), 0, 0, 1, 1, 0, 0, false).
-		AddItem(a.accountTable, 1, 0, 1, 1, 0, 0, false)
-
-		// main section
+	// main section
 	candidatesSection := tview.NewGrid().
 		SetRows(1, 0).
 		SetColumns(0).
@@ -181,18 +225,20 @@ func (a *App) DrawTable() {
 
 	// Layout for screens narrower than 100 cells (menu and side bar are hidden).
 	grid.AddItem(positionsSection, 0, 0, 0, 0, 0, 0, false).
-		AddItem(candidatesSection, 1, 0, 1, 3, 0, 0, false).
-		AddItem(accountSection, 0, 0, 0, 0, 0, 0, false)
+		AddItem(candidatesSection, 1, 0, 1, 3, 0, 0, false)
 
 	// Layout for screens wider than 100 cells.
 	grid.AddItem(positionsSection, 1, 0, 1, 1, 0, 100, false).
-		AddItem(candidatesSection, 1, 1, 1, 1, 0, 100, false).
-		AddItem(accountSection, 1, 2, 1, 1, 0, 100, false)
+		AddItem(candidatesSection, 1, 1, 1, 1, 0, 100, false)
+
+	//a.baseGrid = grid
+
+	a.baseGrid.Clear().AddItem(grid, 1, 1, 2, 2, 0, 0, true)
 
 	// grid is the basis of the view
-	if err := a.viewApp.SetRoot(grid, true).EnableMouse(true).Run(); err != nil {
-		panic(err)
-	}
+	// if err := a.viewApp.SetRoot(grid, true).EnableMouse(true); err != nil {
+	// 	panic(err)
+	// }
 
 }
 
@@ -214,10 +260,40 @@ func (a *App) DrawPositionsTableHeaders() {
 	a.positionsTable.SetCell(0, 4, tview.NewTableCell("Action").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
 }
 
+func (a *App) DrawCryptoTableHeaders() {
+	a.cryptoTable.SetCell(0, 0, tview.NewTableCell("Currency").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
+	a.cryptoTable.SetCell(0, 1, tview.NewTableCell("MACD").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
+	a.cryptoTable.SetCell(0, 2, tview.NewTableCell(" $ ").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
+	a.cryptoTable.SetCell(0, 3, tview.NewTableCell(" ? ").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
+}
+
 func (a *App) UpdateAccountTableData() {
 
 	a.accountTable.Clear()
 	a.accountTable.SetCell(0, 0, tview.NewTableCell(a.account.AccountNumber).SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
+}
+
+func (a *App) UpdateCryptoTableData() {
+
+	a.cryptoTable.Clear()
+	a.DrawCryptoTableHeaders()
+	a.sortData(a.currentCryptoData, false)
+	for _, p := range a.currentCryptoData {
+		rowColor := tcell.ColorWhite
+		if helper.IsInList(p.Symbol, a.forbiddenSymbols) {
+			rowColor = tcell.ColorGhostWhite
+		}
+
+		row := a.cryptoTable.GetRowCount()
+		a.cryptoTable.SetCell(row, 0, tview.NewTableCell(p.Symbol).SetTextColor(rowColor).SetAlign(tview.AlignLeft))
+		a.cryptoTable.SetCell(row, 2, tview.NewTableCell(fmt.Sprintf("%.2f", p.CurrentPrice)).SetTextColor(rowColor).SetAlign(tview.AlignRight))
+		a.cryptoTable.SetCell(row, 1, tview.NewTableCell(fmt.Sprintf("%.2f", p.Bars[len(p.Bars)-1].DiffAdjusted)).SetTextColor(rowColor).SetAlign(tview.AlignRight))
+		if len(p.Bars) > 0 {
+			a.cryptoTable.SetCell(row, 4, tview.NewTableCell(helper.PrettyBuy(p.Bars[len(p.Bars)-1].BuySignal)).SetTextColor(rowColor).SetAlign(tview.AlignRight))
+		}
+
+	}
+
 }
 
 func (a *App) UpdatePositionsTableData() {
@@ -233,6 +309,7 @@ func (a *App) UpdatePositionsTableData() {
 		if p.Quantity == 0 {
 			rowColor = tcell.ColorYellow
 		}
+
 		row := a.positionsTable.GetRowCount()
 		a.positionsTable.SetCell(row, 0, tview.NewTableCell(p.Symbol).SetTextColor(rowColor).SetAlign(tview.AlignLeft))
 		a.positionsTable.SetCell(row, 1, tview.NewTableCell(fmt.Sprintf("%.0f", p.Quantity)).SetTextColor(rowColor).SetAlign(tview.AlignRight))
@@ -240,6 +317,9 @@ func (a *App) UpdatePositionsTableData() {
 		sum = sum + (p.CurrentPrice * p.Quantity)
 		a.positionsTable.SetCell(row, 3, tview.NewTableCell(fmt.Sprintf("%.2f", p.CurrentPrice*p.Quantity)).SetTextColor(rowColor).SetAlign(tview.AlignRight))
 		if len(p.Data.Bars) > 0 {
+			if !p.Data.Bars[len(p.Data.Bars)-1].BuySignal {
+				rowColor = tcell.ColorRed
+			}
 			a.positionsTable.SetCell(row, 4, tview.NewTableCell(helper.PrettyBuy(p.Data.Bars[len(p.Data.Bars)-1].BuySignal)).SetTextColor(rowColor).SetAlign(tview.AlignRight))
 		}
 

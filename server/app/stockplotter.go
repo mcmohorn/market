@@ -1,8 +1,9 @@
 package app
 
 import (
-	"github.com/mcmohorn/market/server/data"
 	"math/rand"
+
+	"github.com/mcmohorn/market/server/data"
 
 	"gonum.org/v1/plot"
 	"gonum.org/v1/plot/plotter"
@@ -14,16 +15,13 @@ import (
 func PlotBars(bars []data.MyBar, symbol string) {
 	rand.Seed(int64(0))
 
-	p, err := plot.New()
-	if err != nil {
-		panic(err)
-	}
+	p := plot.New()
 
 	p.Title.Text = symbol
 	p.X.Label.Text = "Date"
 	p.Y.Label.Text = "Price"
 
-	err = plotutil.AddLinePoints(p, "Fast", GetPointsFromBars(bars, "macdFast"))
+	err := plotutil.AddLinePoints(p, "Fast", GetPointsFromBars(bars, "macdFast"))
 	if err != nil {
 		panic(err)
 	}

@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"math"
@@ -11,7 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/andrewstuart/go-robinhood"
+	"astuart.co/go-robinhood"
+
+	gq "github.com/markcheno/go-quote"
 
 	"github.com/rivo/tview"
 
@@ -35,15 +36,18 @@ type App struct {
 	DB                 *mongo.Database
 	alpacaClient       *alpaca.Client
 	viewApp            *tview.Application
+	baseGrid           *tview.Grid
 	viewTable          *tview.Table
 	accountTable       *tview.Table
 	positionsTable     *tview.Table
+	cryptoTable        *tview.Table
 	statusText         *tview.TextView
 	robinhoodClient    *robinhood.Client
 	minDataPointsToBuy int
 	Timeframe          string
 	forbiddenSymbols   []string
 	currentData        []data.SymbolData
+	currentCryptoData  []data.SymbolData
 	currentPositions   []data.MyPosition
 	account            robinhood.Account
 
@@ -76,52 +80,108 @@ func (a *App) StartDayTrader() {
 	a.header = "Minutely"
 	a.Timeframe = "minute"
 	a.OperateDayTrader(&options)
+}
+
+func (a *App) CryptoExperience() {
+	go a.DrawTable()
+	a.StartCryptoAnalysis()
+}
+
+func (a *App) StartCryptoAnalysis() {
+	a.SetAppStatus("Starting Crypto Analysis")
+	// go a.DrawTable()
+	var wg sync.WaitGroup
+	cryptoOpts := data.AnalysisOptions{
+		IsCrypto:          true,
+		Concurrency:       4,
+		SymbolsPerRequest: 100,
+		StartTime:         time.Now().AddDate(-1, 0, 0),
+		EndTime:           time.Now(),
+	}
+	wg.Add(1)
+	cryptodata, _ := a.GrabDataAndAnalyze(&wg, &cryptoOpts)
+	wg.Wait()
+	a.currentCryptoData = cryptodata
+}
+
+func (a *App) StartPortfolioAnalysis() {
+
+	//go a.DrawTable()
+
+	var wg sync.WaitGroup
+	a.SetAppStatus("Getting Account")
+	wg.Add(1)
+	account, e := services.GetMyAccount(a.robinhoodClient, &wg)
+	if e != nil {
+		fmt.Println(e)
+		log.Panic(e)
+	}
+	a.account = account
+	wg.Wait() // wait for account to be retrieved
+
+	a.SetAppStatus("Getting Positions")
+
+	wg.Add(1)
+	ps, e := services.GetPositions(a.robinhoodClient, &wg, account)
+	wg.Wait()
+	if e != nil {
+		fmt.Println(e)
+		log.Panic(e)
+	}
+	a.currentPositions = ps
+	a.UpdatePositionsTableData()
+	//go a.DrawTable()
+
+	//a.UpdateAccountTableData()
+
+	a.SetAppStatus("Profile Complete")
+	//a.DrawTable()
 
 }
 
 func (a *App) StartEndOfDayAnalysis() {
 
 	go a.DrawTable()
-	options := data.AnalysisOptions{
-		Filename:          "tickers2.txt",
-		Concurrency:       2,
-		Timeframe:         "1D",
-		SymbolsPerRequest: 100,
-		StartTime:         time.Now().AddDate(-1, 0, 0), // one year ago
-		EndTime:           time.Now(),                   // until today
-	}
+
+	var wg sync.WaitGroup
+	a.SetAppStatus("Getting Account")
+	wg.Add(1)
+	account, _ := services.GetMyAccount(a.robinhoodClient, &wg)
+	a.account = account
+	wg.Wait() // wait for account to be retrieved
 
 	a.SetAppStatus("Getting Positions")
 
-	var wg sync.WaitGroup
-	ctx := context.Background()
 	wg.Add(1)
-	ps, e := services.GetPositions(ctx, a.robinhoodClient, &wg)
+	ps, e := services.GetPositions(a.robinhoodClient, &wg, account)
 	wg.Wait()
 	if e != nil {
-		log.Panic(e)
+		// fmt.Println(e)
+		// log.Panic(e)
 	}
 	a.currentPositions = ps
 	a.UpdatePositionsTableData()
 	go a.DrawTable()
 
-	a.SetAppStatus("Getting Account")
-	wg.Add(1)
-	account, _ := services.GetMyAccount(ctx, a.robinhoodClient, &wg)
-	a.account = account
-	wg.Wait() // wait for account to be retrieved
-
 	a.UpdateAccountTableData()
 
 	a.SetAppStatus("Grabbing Data")
 	go a.DrawTable()
+	options := data.AnalysisOptions{
+		Filename:          "tickers2.txt",
+		Concurrency:       4,
+		Timeframe:         "1D",
+		SymbolsPerRequest: 100,
+		StartTime:         time.Now().AddDate(-1, 0, 0), // one year ago
+		EndTime:           time.Now(),                   // until today
+	}
 	wg.Add(1)
-	data, _ := a.GrabDataAndAnalyze(&wg, &options)
+	stockData, _ := a.GrabDataAndAnalyze(&wg, &options)
 	wg.Wait()
-	a.currentData = data
+	a.currentData = stockData
 
 	a.UpdateCurrentPositionsFromCurrentData()
-	a.SetAppStatus("EOD Analysis Complete")
+	a.SetAppStatus("Stock Analysis Complete")
 	a.DrawTable()
 
 }
@@ -145,8 +205,24 @@ func (a *App) SetAppStatus(status string) {
 // AnalyzeTickersInFile reads a file where each line is a stock ticker and analyzes the bars to return better mybars
 func (a *App) GrabDataAndAnalyze(wg *sync.WaitGroup, opts *data.AnalysisOptions) ([]data.SymbolData, error) {
 	defer wg.Done()
-	filename := opts.Filename
-	symbols := reader.ReadTickersFromFile(filename)
+
+	var symbols []string
+	if opts.IsCrypto {
+		// get crypto list from tiingo api
+		syms, e := gq.NewMarketList("tiingo-usd")
+		if e != nil {
+			a.SetAppStatus("Failed to fetch list of cryptos")
+			//fmt.Println("Failed to get list of cryptos")
+			return nil, e
+		}
+		symbols = syms
+	} else {
+		// read symbol list ffrom file
+		go a.SetAppStatus("Reading symbols from file: " + opts.Filename)
+		filename := opts.Filename
+		symbols = reader.ReadTickersFromFile(filename)
+	}
+
 	concurrency := opts.Concurrency
 	symbolsPerRequest := opts.SymbolsPerRequest
 	jobs := make(chan []string)
@@ -156,7 +232,7 @@ func (a *App) GrabDataAndAnalyze(wg *sync.WaitGroup, opts *data.AnalysisOptions)
 	numJobs := int(math.Ceil(float64(len(symbols)) / float64(symbolsPerRequest)))
 
 	if opts.PrintSymbolMath {
-		fmt.Printf("%v symbols in %s needs %v jobs\n", len(symbols), filename, numJobs)
+		fmt.Printf("%v symbols needs %v jobs\n", len(symbols), numJobs)
 	}
 	// routine that populate our todo channel
 	go func() {
@@ -228,9 +304,9 @@ func (a *App) OperateDayTrader(opts *data.DayTraderOptions) {
 
 	// anything holding at the beginning of the day is off the table (assumed in rh.txt)
 	var wg sync.WaitGroup
-	ctx := context.Background()
+	// ctx := context.Background()
 	wg.Add(1)
-	positions, e := services.GetPositions(ctx, a.robinhoodClient, &wg)
+	positions, e := services.GetPositions(a.robinhoodClient, &wg, a.account)
 	wg.Wait()
 	if e != nil {
 		log.Panic(e)
@@ -277,6 +353,7 @@ func (a *App) DoTradingRoutine(opts *data.DayTraderOptions) {
 		SymbolsPerRequest: 100,
 		StartTime:         time.Now().AddDate(0, 0, -1),
 		EndTime:           time.Now(),
+		IsCrypto:          false,
 	}
 	wg.Add(1)
 	data, _ := a.GrabDataAndAnalyze(&wg, &analysisOptions)
@@ -285,9 +362,9 @@ func (a *App) DoTradingRoutine(opts *data.DayTraderOptions) {
 	// a.currentData is now up to date
 
 	// Step 2: pull holdings for designated portfolio / account from robinhood
-	ctx := context.Background()
+	//ctx := context.Background()
 	wg.Add(1)
-	positions, _ := services.GetPositions(ctx, a.robinhoodClient, &wg)
+	positions, _ := services.GetPositions(a.robinhoodClient, &wg, a.account)
 	wg.Wait()
 
 	for _, p := range positions {
@@ -303,7 +380,7 @@ func (a *App) DoTradingRoutine(opts *data.DayTraderOptions) {
 				if x.CurrentBuySignal && opts.PerformTrades && p.Quantity > 0 {
 					// sell this holding
 					wg.Add(1)
-					services.TradeQuantityAtPrice(ctx, a.robinhoodClient, &wg, a.DB, p.Symbol, p.Quantity, float64(p.CurrentPrice), robinhood.Sell)
+					services.TradeQuantityAtPrice(a.robinhoodClient, &wg, a.DB, p.Symbol, p.Quantity, float64(p.CurrentPrice), robinhood.Sell)
 				}
 				break
 			}
@@ -313,7 +390,7 @@ func (a *App) DoTradingRoutine(opts *data.DayTraderOptions) {
 
 	// use remaining buying power in portfolio to purchase as much of the best
 	wg.Add(1)
-	account, _ := services.GetMyAccount(ctx, a.robinhoodClient, &wg)
+	account, _ := services.GetMyAccount(a.robinhoodClient, &wg)
 	a.account = account
 	wg.Wait() // wait for account to be retrieved
 
@@ -356,7 +433,7 @@ func (a *App) DoTradingRoutine(opts *data.DayTraderOptions) {
 
 		if canBuy > 0 && opts.PerformTrades {
 			wg.Add(1)
-			services.TradeQuantityAtPrice(ctx, a.robinhoodClient, &wg, a.DB, a.currentData[bestIndex].Symbol, float32(canBuy), float64(limitPrice), robinhood.Buy)
+			services.TradeQuantityAtPrice(a.robinhoodClient, &wg, a.DB, a.currentData[bestIndex].Symbol, float32(canBuy), float64(limitPrice), robinhood.Buy)
 			wg.Wait()
 		}
 	}
@@ -382,19 +459,45 @@ func (a *App) AnalyzeSymbols(symbols []string, options *data.AnalysisOptions) (m
 	var results = make(map[string][]data.MyBar)
 	var finalResults = make(map[string][]data.MyBar)
 
-	alpacaresults, err := a.alpacaClient.ListBars(symbols, params)
-	if err != nil {
-		panic(err)
-		// log.Fatal(err)
-	}
+	if options.IsCrypto {
+		// use tingo to get historical data
+		st_str := options.StartTime.Format("2006-01-02 15:04")
+		end_str := options.EndTime.Format("2006-01-02 15:04")
 
-	// convert alpaca.bars to mybars
-	for k, bars := range alpacaresults {
-		results[k] = make([]data.MyBar, 0)
-		for _, r := range bars {
-			results[k] = append(results[k], data.MyBar{
-				Bar: r,
-			})
+		qs, _ := gq.NewQuotesFromTiingoCryptoSyms(symbols, st_str, end_str, gq.Daily, os.Getenv("TIINGO_API_TOKEN"))
+
+		// convert tiingo crypto series to mybars
+		for _, q := range qs {
+			results[q.Symbol] = make([]data.MyBar, 0)
+			for i, close64 := range q.Close {
+				price := float32(close64)
+				results[q.Symbol] = append(results[q.Symbol], data.MyBar{
+					Bar: alpaca.Bar{
+						Time:  q.Date[i].Unix(),
+						Close: price,
+					},
+					Price: price,
+				})
+			}
+		}
+
+	} else {
+		// use alpaca to get historical data (assuming stocks if not crpto)
+		// use alpaca to retrieve historical stock price data
+		alpacaresults, err := a.alpacaClient.ListBars(symbols, params)
+		if err != nil {
+			panic(err)
+			// log.Fatal(err)
+		}
+
+		// convert alpaca.bars to mybars
+		for k, bars := range alpacaresults {
+			results[k] = make([]data.MyBar, 0)
+			for _, r := range bars {
+				results[k] = append(results[k], data.MyBar{
+					Bar: r,
+				})
+			}
 		}
 	}
 
@@ -503,17 +606,21 @@ func (a *App) Initialize(c *config.Config, wg *sync.WaitGroup) {
 	}
 	a.status = "Initializing"
 	a.DB = db
-	a.footer = "Ctrl-X: Exit"
+	a.footer = "X - Exit     Esc - Go Back"
 	a.currentData = make([]data.SymbolData, 0)
 	a.minDataPointsToBuy = 30
 	a.alpacaClient = alpaca.NewClient(common.Credentials())
 
-	a.robinhoodClient, err = services.InitializeRobinhoodClient(context.Background())
+	a.robinhoodClient, err = services.InitializeRobinhoodClient()
+	if err != nil {
+		log.Fatal()
+	}
 
 	a.viewApp = tview.NewApplication()
 	a.viewTable = tview.NewTable().SetBorders(false).SetSeparator(tview.Borders.Vertical)
 	a.accountTable = tview.NewTable().SetBorders(false).SetSeparator(tview.Borders.Vertical)
 	a.positionsTable = tview.NewTable().SetBorders(false).SetSeparator(tview.Borders.Vertical)
+	a.cryptoTable = tview.NewTable().SetBorders(false).SetSeparator(tview.Borders.Vertical)
 	a.statusText = tview.NewTextView().
 		SetTextAlign(tview.AlignCenter).
 		SetText(a.status)

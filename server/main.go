@@ -36,5 +36,8 @@ func main() {
 	//app.StartEndOfDayAnalysis()
 	//app.StartDayTrader()
 	app.DrawWelcomeScreen()
+	//app.StartCryptoAnalysis()
+	//app.StartPokemonAnalysis()
+	//app.StartPortfolioAnalysis()
 
 }
