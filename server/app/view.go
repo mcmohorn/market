@@ -247,9 +247,10 @@ func (a *App) DrawTableHeaders() {
 	a.viewTable.SetCell(0, 1, tview.NewTableCell("Action").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
 	a.viewTable.SetCell(0, 2, tview.NewTableCell("Changed").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
 	a.viewTable.SetCell(0, 3, tview.NewTableCell("changes").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
-	a.viewTable.SetCell(0, 4, tview.NewTableCell("diff").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
-	a.viewTable.SetCell(0, 5, tview.NewTableCell("diffA").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
+	a.viewTable.SetCell(0, 4, tview.NewTableCell("macd").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
+	a.viewTable.SetCell(0, 5, tview.NewTableCell("(adj)").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
 	a.viewTable.SetCell(0, 6, tview.NewTableCell("n").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
+	a.viewTable.SetCell(0, 7, tview.NewTableCell("rsi").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
 }
 
 func (a *App) DrawPositionsTableHeaders() {
@@ -348,6 +349,29 @@ func (a *App) UpdateTableData() {
 			a.viewTable.SetCell(row, 4, tview.NewTableCell(fmt.Sprintf("%.2f", diff)).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignCenter))
 			a.viewTable.SetCell(row, 5, tview.NewTableCell(fmt.Sprintf("%.2f", lastBar.DiffAdjusted)).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignCenter))
 			a.viewTable.SetCell(row, 6, tview.NewTableCell(fmt.Sprintf("%v", len(s.Bars))).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignCenter))
+
+			rsiColor := tcell.ColorWhite
+			// if lastBar.RSI > 69 {
+			// 	rsiColor = tcell.ColorRed
+			// } else if lastBar.RSI < 31 {
+			// 	rsiColor = tcell.ColorGreen
+			// }
+
+			if lastBar.RSI > 85 {
+				rsiColor = tcell.ColorDarkRed
+			} else if lastBar.RSI > 70 {
+				rsiColor = tcell.ColorRed
+			} else if lastBar.RSI > 50 {
+				rsiColor = tcell.ColorWhite
+			} else if lastBar.RSI > 30 {
+				rsiColor = tcell.ColorLightGreen
+			} else if lastBar.RSI > 15 {
+				rsiColor = tcell.ColorGreen
+			} else {
+				rsiColor = tcell.ColorDarkGreen
+			}
+
+			a.viewTable.SetCell(row, 7, tview.NewTableCell(fmt.Sprintf("%.0f", lastBar.RSI)).SetTextColor(rsiColor).SetAlign(tview.AlignCenter))
 		}
 
 	}

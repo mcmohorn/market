@@ -24,6 +24,9 @@ type MyBar struct {
 	Price            float32
 	NextPrice        float32
 	T                int64
+	SMMAU            float32
+	SMMAD            float32
+	RSI              float32
 }
 
 // MyPosition is like a robinhood position unified with a robinhood quote
