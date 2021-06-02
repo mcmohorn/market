@@ -51,6 +51,29 @@ func GetMyAccount(cli *robinhood.Client, wg *sync.WaitGroup) (acct robinhood.Acc
 
 }
 
+func GetCryptoPositions(cli *robinhood.Client, wg *sync.WaitGroup) ([]data.MyPosition, error) {
+	defer wg.Done()
+
+	mypositions := make([]data.MyPosition, 0)
+
+	pairs, err := cli.GetCryptoCurrencyPairs()
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range pairs {
+		mypositions = append(mypositions, data.MyPosition{
+			Symbol:        p.Symbol,
+			Quantity:      float32(p.CyrptoAssetCurrency.Increment),
+			AssetCurrency: p.CyrptoAssetCurrency,
+			CurrencyPair:  p,
+		})
+	}
+
+	// fmt.Println(portfolio)
+	return mypositions, err
+
+}
+
 func GetPositions(cli *robinhood.Client, wg *sync.WaitGroup, acc robinhood.Account) ([]data.MyPosition, error) {
 	defer wg.Done()
 

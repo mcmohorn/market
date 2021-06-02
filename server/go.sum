@@ -19,6 +19,8 @@ github.com/cmckee-dev/go-alpha-vantage v0.0.0-20190315022515-f8ae72eef75c h1:O0R
 github.com/cmckee-dev/go-alpha-vantage v0.0.0-20190315022515-f8ae72eef75c/go.mod h1:Cjzokt+SQPs9Y+pYDu95rr72Jkbehg9meeoYzBbf6Q0=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/fabioberger/coinbase-go v0.0.0-20160522011833-8328539b18ab h1:odM/npqUscEtKetZu2RU1I9wVkPBh8sV14PiCbsBLMU=
+github.com/fabioberger/coinbase-go v0.0.0-20160522011833-8328539b18ab/go.mod h1:xJ+HhsY90LojVt3vnpArzFEcf13xDhHdjnWBhMmhDOA=
 github.com/fogleman/gg v1.2.1-0.20190220221249-0403632d5b90/go.mod h1:R/bRT+9gY/C5z7JzPU0zXsXHKM4/ayA+zqcVNZzPa1k=
 github.com/fogleman/gg v1.3.0 h1:/7zJX8F6AaYQc57WQCyN9cAIz+4bCJGO9B+dyW29am8=
 github.com/fogleman/gg v1.3.0/go.mod h1:R/bRT+9gY/C5z7JzPU0zXsXHKM4/ayA+zqcVNZzPa1k=

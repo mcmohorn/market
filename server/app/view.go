@@ -34,28 +34,12 @@ const computerArt = ` ______________
    	\      ____    \   
       \_____\___\____\`
 
-const computerArt1 = `______________________
-|                      |
-|      M ax            |
-|      A sset          |
-|      T trade         |
-|      E engine        |
-|      O ptimizer      |
-|______________________|
-|______________________|
-  \ --------------------- \
-   \ --------------------  \
-   \ --------------------- \
-    \ --------------------- \
-	 \       \        \      \
-	  \_______\________\______\`
-
 func (a *App) MakeWelcomeSelection(n int) {
 	switch n {
 	case 1:
 		a.StartEndOfDayAnalysis()
 	case 2:
-		a.CryptoExperience()
+		a.StartCryptoAnalysis()
 	}
 }
 
@@ -79,7 +63,7 @@ func (a *App) DrawWelcomeScreen() {
 		AddItem("Exit", "", 'x', func() {
 			a.StopGracefully()
 		}).SetSelectedFunc(func(i int, b string, c string, d rune) {
-		a.MakeWelcomeSelection(i)
+		// a.MakeWelcomeSelection(i)
 	})
 
 	grid := tview.NewGrid().
@@ -147,11 +131,12 @@ func (a *App) SetupInputs() {
 func (a *App) DrawTable() {
 
 	a.sortCurrentData(false)
+	if len(a.currentPositions) > 0 {
 
-	a.UpdatePositionsTableData()
+		a.UpdatePositionsTableData()
+	}
 	a.UpdateAccountTableData()
 	a.UpdateTableData()
-	//a.UpdateCryptoTableData()
 
 	a.viewTable.Select(0, 0).SetFixed(1, 1).SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEscape {
@@ -202,8 +187,8 @@ func (a *App) DrawTable() {
 
 	grid := tview.NewGrid().
 		SetRows(2, 0, 1).
-		SetColumns(40, 0).
-		SetBorders(true).
+		SetColumns(0, 0).
+		SetBorders(false).
 		AddItem(a.statusText, 0, 0, 1, 3, 0, 0, false).
 		AddItem(newPrimitive(a.footer), 2, 0, 1, 3, 0, 0, false)
 
@@ -234,6 +219,9 @@ func (a *App) DrawTable() {
 	//a.baseGrid = grid
 
 	a.baseGrid.Clear().AddItem(grid, 1, 1, 2, 2, 0, 0, true)
+	a.viewApp.SetFocus(a.viewTable)
+	a.viewTable.ScrollToBeginning()
+	a.viewTable.Select(0, 0)
 
 	// grid is the basis of the view
 	// if err := a.viewApp.SetRoot(grid, true).EnableMouse(true); err != nil {
@@ -243,14 +231,14 @@ func (a *App) DrawTable() {
 }
 
 func (a *App) DrawTableHeaders() {
-	a.viewTable.SetCell(0, 0, tview.NewTableCell("Symbol").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
-	a.viewTable.SetCell(0, 1, tview.NewTableCell("Action").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
-	a.viewTable.SetCell(0, 2, tview.NewTableCell("Changed").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
-	a.viewTable.SetCell(0, 3, tview.NewTableCell("changes").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
-	a.viewTable.SetCell(0, 4, tview.NewTableCell("macd").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
-	a.viewTable.SetCell(0, 5, tview.NewTableCell("(adj)").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
-	a.viewTable.SetCell(0, 6, tview.NewTableCell("n").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
-	a.viewTable.SetCell(0, 7, tview.NewTableCell("rsi").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
+	a.viewTable.SetCell(0, 0, tview.NewTableCell(" Symbol ").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
+	a.viewTable.SetCell(0, 1, tview.NewTableCell(" Action ").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
+	a.viewTable.SetCell(0, 2, tview.NewTableCell(" Changed ").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
+	a.viewTable.SetCell(0, 3, tview.NewTableCell(" n\u0394 ").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
+	a.viewTable.SetCell(0, 4, tview.NewTableCell(" macd ").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
+	a.viewTable.SetCell(0, 5, tview.NewTableCell(" (adj) ").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
+	a.viewTable.SetCell(0, 6, tview.NewTableCell(" n ").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignCenter))
+	a.viewTable.SetCell(0, 7, tview.NewTableCell(" rsi ").SetTextColor(tcell.ColorBlue).SetAlign(tview.AlignLeft))
 }
 
 func (a *App) DrawPositionsTableHeaders() {
@@ -324,6 +312,13 @@ func (a *App) UpdatePositionsTableData() {
 			a.positionsTable.SetCell(row, 4, tview.NewTableCell(helper.PrettyBuy(p.Data.Bars[len(p.Data.Bars)-1].BuySignal)).SetTextColor(rowColor).SetAlign(tview.AlignRight))
 		}
 
+		// if p.AssetCurrency.Name != "" {
+		// 	a.positionsTable.SetCell(row, 5, tview.NewTableCell(p.AssetCurrency.Code).SetTextColor(rowColor).SetAlign(tview.AlignLeft))
+		// 	a.positionsTable.SetCell(row, 6, tview.NewTableCell(p.AssetCurrency.ID).SetTextColor(rowColor).SetAlign(tview.AlignLeft))
+		// 	a.positionsTable.SetCell(row, 7, tview.NewTableCell(p.AssetCurrency.Name).SetTextColor(rowColor).SetAlign(tview.AlignLeft))
+		// 	a.positionsTable.SetCell(row, 7, tview.NewTableCell(p.CurrencyPair.).SetTextColor(rowColor).SetAlign(tview.AlignLeft))
+		// }
+
 	}
 
 	a.positionsTable.SetCell(a.positionsTable.GetRowCount(), 3, tview.NewTableCell(fmt.Sprintf("%.2f", sum)).SetTextColor(tcell.ColorGreen)).SetTitleAlign((tview.AlignRight))
@@ -351,17 +346,14 @@ func (a *App) UpdateTableData() {
 			a.viewTable.SetCell(row, 6, tview.NewTableCell(fmt.Sprintf("%v", len(s.Bars))).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignCenter))
 
 			rsiColor := tcell.ColorWhite
-			// if lastBar.RSI > 69 {
-			// 	rsiColor = tcell.ColorRed
-			// } else if lastBar.RSI < 31 {
-			// 	rsiColor = tcell.ColorGreen
-			// }
 
 			if lastBar.RSI > 85 {
 				rsiColor = tcell.ColorDarkRed
 			} else if lastBar.RSI > 70 {
 				rsiColor = tcell.ColorRed
-			} else if lastBar.RSI > 50 {
+			} else if lastBar.RSI > 55 {
+				rsiColor = tcell.ColorYellow
+			} else if lastBar.RSI > 45 {
 				rsiColor = tcell.ColorWhite
 			} else if lastBar.RSI > 30 {
 				rsiColor = tcell.ColorLightGreen

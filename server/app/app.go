@@ -18,8 +18,8 @@ import (
 
 	"github.com/alpacahq/alpaca-trade-api-go/alpaca"
 	"github.com/alpacahq/alpaca-trade-api-go/common"
+	"github.com/fabioberger/coinbase-go"
 	"github.com/gorilla/mux"
-
 	"github.com/mcmohorn/market/server/config"
 	"github.com/mcmohorn/market/server/data"
 	"github.com/mcmohorn/market/server/db"
@@ -44,6 +44,7 @@ type App struct {
 	cryptoTable        *tview.Table
 	statusText         *tview.TextView
 	robinhoodClient    *robinhood.Client
+	coinbaseClient     coinbase.Client
 	minDataPointsToBuy int
 	Timeframe          string
 	forbiddenSymbols   []string
@@ -83,61 +84,34 @@ func (a *App) StartDayTrader() {
 	a.OperateDayTrader(&options)
 }
 
-func (a *App) CryptoExperience() {
-	go a.DrawTable()
-	a.StartCryptoAnalysis()
-}
-
 func (a *App) StartCryptoAnalysis() {
 	a.SetAppStatus("Starting Crypto Analysis")
-	// go a.DrawTable()
+	go a.DrawTable()
+
 	var wg sync.WaitGroup
 	cryptoOpts := data.AnalysisOptions{
 		IsCrypto:          true,
 		Concurrency:       4,
+		Filename:          "cryptos.txt",
 		SymbolsPerRequest: 100,
 		StartTime:         time.Now().AddDate(-1, 0, 0),
 		EndTime:           time.Now(),
 	}
+
+	wg.Add(1)
+	a.SetAppStatus("getting crypto positions")
+	var err error
+	a.currentPositions, err = services.GetCryptoPositions(a.robinhoodClient, &wg)
+	wg.Wait()
+	if err != nil {
+		fmt.Println("sholdnt get hurr")
+	}
+
 	wg.Add(1)
 	cryptodata, _ := a.GrabDataAndAnalyze(&wg, &cryptoOpts)
 	wg.Wait()
-	a.currentCryptoData = cryptodata
-}
-
-func (a *App) StartPortfolioAnalysis() {
-
-	//go a.DrawTable()
-
-	var wg sync.WaitGroup
-	a.SetAppStatus("Getting Account")
-	wg.Add(1)
-	account, e := services.GetMyAccount(a.robinhoodClient, &wg)
-	if e != nil {
-		fmt.Println(e)
-		log.Panic(e)
-	}
-	a.account = account
-	wg.Wait() // wait for account to be retrieved
-
-	a.SetAppStatus("Getting Positions")
-
-	wg.Add(1)
-	ps, e := services.GetPositions(a.robinhoodClient, &wg, account)
-	wg.Wait()
-	if e != nil {
-		fmt.Println(e)
-		log.Panic(e)
-	}
-	a.currentPositions = ps
-	a.UpdatePositionsTableData()
-	//go a.DrawTable()
-
-	//a.UpdateAccountTableData()
-
-	a.SetAppStatus("Profile Complete")
-	//a.DrawTable()
-
+	a.currentData = cryptodata
+	go a.DrawTable()
 }
 
 func (a *App) StartEndOfDayAnalysis() {
@@ -208,21 +182,9 @@ func (a *App) GrabDataAndAnalyze(wg *sync.WaitGroup, opts *data.AnalysisOptions)
 	defer wg.Done()
 
 	var symbols []string
-	if opts.IsCrypto {
-		// get crypto list from tiingo api
-		syms, e := gq.NewMarketList("tiingo-usd")
-		if e != nil {
-			a.SetAppStatus("Failed to fetch list of cryptos")
-			//fmt.Println("Failed to get list of cryptos")
-			return nil, e
-		}
-		symbols = syms
-	} else {
-		// read symbol list ffrom file
-		go a.SetAppStatus("Reading symbols from file: " + opts.Filename)
-		filename := opts.Filename
-		symbols = reader.ReadTickersFromFile(filename)
-	}
+	go a.SetAppStatus("Reading symbols from file: " + opts.Filename)
+	filename := opts.Filename
+	symbols = reader.ReadTickersFromFile(filename)
 
 	concurrency := opts.Concurrency
 	symbolsPerRequest := opts.SymbolsPerRequest
@@ -360,7 +322,6 @@ func (a *App) DoTradingRoutine(opts *data.DayTraderOptions) {
 	data, _ := a.GrabDataAndAnalyze(&wg, &analysisOptions)
 	wg.Wait()
 	a.currentData = data
-	// a.currentData is now up to date
 
 	// Step 2: pull holdings for designated portfolio / account from robinhood
 	//ctx := context.Background()
@@ -530,6 +491,7 @@ func (a *App) Initialize(c *config.Config, wg *sync.WaitGroup) {
 	a.currentData = make([]data.SymbolData, 0)
 	a.minDataPointsToBuy = 30
 	a.alpacaClient = alpaca.NewClient(common.Credentials())
+	a.coinbaseClient = coinbase.ApiKeyClient(os.Getenv("COINBASE_KEY"), os.Getenv("COINBASE_SECRET"))
 
 	a.robinhoodClient, err = services.InitializeRobinhoodClient()
 	if err != nil {

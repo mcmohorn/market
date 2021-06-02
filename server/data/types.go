@@ -31,11 +31,13 @@ type MyBar struct {
 
 // MyPosition is like a robinhood position unified with a robinhood quote
 type MyPosition struct {
-	Symbol       string
-	Quantity     float32
-	CurrentPrice float32
-	Instrument   *robinhood.Instrument
-	Data         SymbolData
+	Symbol        string
+	Quantity      float32
+	CurrentPrice  float32
+	Instrument    *robinhood.Instrument
+	Data          SymbolData
+	AssetCurrency robinhood.AssetCurrency
+	CurrencyPair  robinhood.CryptoCurrencyPair
 }
 
 type OrderEvent struct {
