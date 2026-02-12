@@ -5,3 +5,18 @@ server/tickers2.txt
 **/*/.DS_Store
 
 web/node_modules/
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
+
+# Replit
+.cache/
+.local/
