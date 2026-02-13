@@ -10,7 +10,7 @@ export async function initDB() {
     await client.query(`
       CREATE TABLE IF NOT EXISTS stocks (
         id SERIAL PRIMARY KEY,
-        symbol VARCHAR(20) NOT NULL UNIQUE,
+        symbol VARCHAR(20) NOT NULL,
         name VARCHAR(255) DEFAULT '',
         exchange VARCHAR(50) DEFAULT '',
         sector VARCHAR(100) DEFAULT '',
@@ -27,17 +27,16 @@ export async function initDB() {
         low DOUBLE PRECISION,
         close DOUBLE PRECISION,
         volume BIGINT,
-        asset_type VARCHAR(20) DEFAULT 'stock',
-        UNIQUE(symbol, date)
+        asset_type VARCHAR(20) DEFAULT 'stock'
       );
 
       CREATE INDEX IF NOT EXISTS idx_price_history_symbol ON price_history(symbol);
       CREATE INDEX IF NOT EXISTS idx_price_history_date ON price_history(date);
-      CREATE INDEX IF NOT EXISTS idx_price_history_symbol_date ON price_history(symbol, date);
+      CREATE INDEX IF NOT EXISTS idx_price_history_asset ON price_history(asset_type);
 
       CREATE TABLE IF NOT EXISTS computed_signals (
         id SERIAL PRIMARY KEY,
-        symbol VARCHAR(20) NOT NULL UNIQUE,
+        symbol VARCHAR(20) NOT NULL,
         name VARCHAR(255) DEFAULT '',
         exchange VARCHAR(50) DEFAULT '',
         sector VARCHAR(100) DEFAULT '',

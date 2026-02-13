@@ -160,7 +160,7 @@ async function storePriceDataPostgres(allBars: Record<string, StockBar[]>, asset
       const meta = assetMeta?.get(symbol);
       await client.query(
         `INSERT INTO stocks (symbol, name, exchange, asset_type) VALUES ($1, $2, $3, $4)
-         ON CONFLICT (symbol) DO UPDATE SET name = $2, exchange = $3`,
+         ON CONFLICT (symbol, asset_type) DO UPDATE SET name = $2, exchange = $3`,
         [symbol, meta?.name || symbol, meta?.exchange || "", assetType]
       );
 
@@ -179,7 +179,7 @@ async function storePriceDataPostgres(allBars: Record<string, StockBar[]>, asset
         await client.query(
           `INSERT INTO price_history (symbol, date, open, high, low, close, volume, asset_type)
            VALUES ${batchPlaceholders.join(",")}
-           ON CONFLICT (symbol, date) DO UPDATE SET open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low, close = EXCLUDED.close, volume = EXCLUDED.volume`,
+           ON CONFLICT (symbol, date, asset_type) DO UPDATE SET open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low, close = EXCLUDED.close, volume = EXCLUDED.volume`,
           batchParams
         );
       }
@@ -275,8 +275,8 @@ async function computeAndStoreSignals(bigqueryReady: boolean = false) {
       await client.query(
         `INSERT INTO computed_signals (symbol, name, exchange, sector, asset_type, price, change_val, change_percent, signal, macd_histogram, macd_histogram_adjusted, rsi, signal_strength, last_signal_change, signal_changes, data_points, volume, computed_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW())
-         ON CONFLICT (symbol) DO UPDATE SET
-           name=$2, exchange=$3, sector=$4, asset_type=$5, price=$6, change_val=$7, change_percent=$8, signal=$9, macd_histogram=$10, macd_histogram_adjusted=$11, rsi=$12, signal_strength=$13, last_signal_change=$14, signal_changes=$15, data_points=$16, volume=$17, computed_at=NOW()`,
+         ON CONFLICT (symbol, asset_type) DO UPDATE SET
+           name=$2, exchange=$3, sector=$4, price=$6, change_val=$7, change_percent=$8, signal=$9, macd_histogram=$10, macd_histogram_adjusted=$11, rsi=$12, signal_strength=$13, last_signal_change=$14, signal_changes=$15, data_points=$16, volume=$17, computed_at=NOW()`,
         [
           symbol, meta.name, meta.exchange, meta.sector || "", meta.asset_type,
           last.price, changeVal, changePct,
