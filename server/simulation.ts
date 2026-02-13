@@ -244,11 +244,16 @@ export async function runSimulation(
 
       if (shouldSell) {
         const total = pos.quantity * currentPrice;
+        const costBasis = pos.quantity * pos.avgCost;
+        const pnl = total - costBasis;
+        const pnlPctVal = ((currentPrice - pos.avgCost) / pos.avgCost) * 100;
         cash += total;
         trades.push({
           date, symbol: sym, action: "SELL",
           quantity: pos.quantity, price: currentPrice,
           total, reason,
+          pnl: Math.round(pnl * 100) / 100,
+          pnlPct: Math.round(pnlPctVal * 100) / 100,
         });
         positions.delete(sym);
       }

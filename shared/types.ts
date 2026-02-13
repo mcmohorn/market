@@ -102,6 +102,8 @@ export interface TradeRecord {
   price: number;
   total: number;
   reason: string;
+  pnl?: number;
+  pnlPct?: number;
 }
 
 export interface PortfolioSnapshot {

@@ -34,6 +34,7 @@ export default function TradeLog({ trades }: Props) {
               <th className="text-right py-1 px-2">QTY</th>
               <th className="text-right py-1 px-2">PRICE</th>
               <th className="text-right py-1 px-2">TOTAL</th>
+              <th className="text-right py-1 px-2">P&L</th>
               <th className="text-left py-1 px-2">REASON</th>
             </tr>
           </thead>
@@ -60,6 +61,18 @@ export default function TradeLog({ trades }: Props) {
                 </td>
                 <td className="py-1 px-2 text-right text-cyber-text">
                   ${trade.total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </td>
+                <td className="py-1 px-2 text-right">
+                  {trade.action === "SELL" && trade.pnl != null ? (
+                    <span className={trade.pnl >= 0 ? "text-cyber-green" : "text-red-400"}>
+                      {trade.pnl >= 0 ? "+" : ""}${trade.pnl.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      <span className="text-[10px] ml-1">
+                        ({trade.pnlPct! >= 0 ? "+" : ""}{trade.pnlPct!.toFixed(1)}%)
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-cyber-muted">—</span>
+                  )}
                 </td>
                 <td className="py-1 px-2 text-cyber-muted text-[10px] max-w-[200px] truncate">
                   {trade.reason}
