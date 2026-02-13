@@ -4,9 +4,10 @@ import { fetchSymbols } from "../lib/api";
 interface Props {
   selectedSymbols: string[];
   onChange: (symbols: string[]) => void;
+  assetType?: string;
 }
 
-export default function SymbolPicker({ selectedSymbols, onChange }: Props) {
+export default function SymbolPicker({ selectedSymbols, onChange, assetType }: Props) {
   const [allSymbols, setAllSymbols] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
@@ -16,11 +17,12 @@ export default function SymbolPicker({ selectedSymbols, onChange }: Props) {
 
   useEffect(() => {
     setLoading(true);
-    fetchSymbols()
+    fetchSymbols(assetType)
       .then(setAllSymbols)
       .catch(() => setAllSymbols([]))
       .finally(() => setLoading(false));
-  }, []);
+    onChange([]);
+  }, [assetType]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {

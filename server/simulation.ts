@@ -95,23 +95,25 @@ interface SymbolData {
 async function loadPriceData(
   symbols: string[] | undefined,
   startDate: string,
-  endDate: string
+  endDate: string,
+  assetType?: string
 ): Promise<SymbolData[]> {
   let query: string;
   let queryParams: any[];
+  const atFilter = assetType === "crypto" ? "crypto" : "stock";
 
   if (symbols && symbols.length > 0) {
     query = `SELECT symbol, date, open, high, low, close, volume
              FROM price_history
-             WHERE symbol = ANY($1) AND date >= $2 AND date <= $3
+             WHERE symbol = ANY($1) AND date >= $2 AND date <= $3 AND asset_type = $4
              ORDER BY symbol, date ASC`;
-    queryParams = [symbols, startDate, endDate];
+    queryParams = [symbols, startDate, endDate, atFilter];
   } else {
     query = `SELECT symbol, date, open, high, low, close, volume
              FROM price_history
-             WHERE date >= $1 AND date <= $2
+             WHERE date >= $1 AND date <= $2 AND asset_type = $3
              ORDER BY symbol, date ASC`;
-    queryParams = [startDate, endDate];
+    queryParams = [startDate, endDate, atFilter];
   }
 
   const result = await pool.query(query, queryParams);
@@ -140,9 +142,10 @@ export async function runSimulation(
   endDate: string,
   initialCapital: number,
   params: StrategyParams,
-  symbols?: string[]
+  symbols?: string[],
+  assetType?: string
 ): Promise<SimulationResult> {
-  const allData = await loadPriceData(symbols, startDate, endDate);
+  const allData = await loadPriceData(symbols, startDate, endDate, assetType);
 
   if (allData.length === 0) {
     throw new Error("No price data found for the given date range and symbols");
@@ -408,7 +411,8 @@ export async function compareStrategies(
   periods: number[],
   initialCapital: number,
   iterations: number,
-  symbols?: string[]
+  symbols?: string[],
+  assetType?: string
 ): Promise<StrategyComparison> {
   const results: StrategyComparison = { strategies: [] };
 
@@ -420,7 +424,7 @@ export async function compareStrategies(
     for (const years of periods) {
       const periodStart = new Date();
       periodStart.setFullYear(periodStart.getFullYear() - years);
-      const allData = await loadPriceData(symbols, periodStart.toISOString().split("T")[0], endDate);
+      const allData = await loadPriceData(symbols, periodStart.toISOString().split("T")[0], endDate, assetType);
 
       if (allData.length === 0 || allData[0].bars.length < 30) {
         periodResults.push({
@@ -444,7 +448,7 @@ export async function compareStrategies(
         const startIdx = Math.floor(Math.random() * (sortedDates.length - 60));
         const simStartDate = sortedDates[startIdx];
         try {
-          const result = await runSimulation(simStartDate, endDate, initialCapital, strat.params, symbols);
+          const result = await runSimulation(simStartDate, endDate, initialCapital, strat.params, symbols, assetType);
           simResults.push(result);
         } catch {
         }
@@ -488,13 +492,14 @@ export async function analyzeMarketConditions(
   strategies: { name: string; params: StrategyParams }[],
   initialCapital: number,
   benchmark: string,
-  symbols?: string[]
+  symbols?: string[],
+  assetType?: string
 ): Promise<MarketConditionResult[]> {
   const endDate = new Date().toISOString().split("T")[0];
   const startDate = new Date();
   startDate.setFullYear(startDate.getFullYear() - 10);
 
-  const benchData = await loadPriceData([benchmark], startDate.toISOString().split("T")[0], endDate);
+  const benchData = await loadPriceData([benchmark], startDate.toISOString().split("T")[0], endDate, assetType);
 
   if (benchData.length === 0) {
     throw new Error(`No benchmark data found for ${benchmark}`);
@@ -584,7 +589,7 @@ export async function analyzeMarketConditions(
 
       for (const period of condPeriods.slice(0, 5)) {
         try {
-          const result = await runSimulation(period.startDate, period.endDate, initialCapital, strat.params, symbols);
+          const result = await runSimulation(period.startDate, period.endDate, initialCapital, strat.params, symbols, assetType);
           simResults.push(result);
         } catch {
         }

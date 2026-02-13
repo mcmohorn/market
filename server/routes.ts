@@ -474,7 +474,8 @@ router.post("/api/simulation/run", async (req, res) => {
       endDate,
       initialCapital,
       params,
-      body.symbols
+      body.symbols,
+      body.assetType
     );
 
     res.json(result);
@@ -498,7 +499,8 @@ router.post("/api/simulation/compare", async (req, res) => {
       body.periods || [5, 10, 20],
       body.initialCapital || 10000,
       body.iterations || 10,
-      body.symbols
+      body.symbols,
+      body.assetType
     );
 
     res.json(result);
@@ -521,7 +523,8 @@ router.post("/api/simulation/market-conditions", async (req, res) => {
       strategies,
       body.initialCapital || 10000,
       body.benchmark || "SPY",
-      body.symbols
+      body.symbols,
+      body.assetType
     );
 
     res.json(result);

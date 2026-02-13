@@ -25,7 +25,11 @@ const DEFAULT_PARAMS: StrategyParams = {
 
 type Tab = "simulate" | "compare" | "conditions";
 
-export default function SimulationPage() {
+interface SimulationPageProps {
+  assetType: string;
+}
+
+export default function SimulationPage({ assetType }: SimulationPageProps) {
   const [tab, setTab] = useState<Tab>("simulate");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +54,7 @@ export default function SimulationPage() {
         endDate,
         initialCapital: capital,
         strategy: params,
+        assetType,
         ...(selectedSymbols.length > 0 ? { symbols: selectedSymbols } : {}),
       });
       setSimResult(result);
@@ -58,7 +63,7 @@ export default function SimulationPage() {
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate, capital, params, selectedSymbols]);
+  }, [startDate, endDate, capital, params, selectedSymbols, assetType]);
 
   const handleCompare = useCallback(async () => {
     setLoading(true);
@@ -73,6 +78,7 @@ export default function SimulationPage() {
         periods: [5, 10, 20],
         initialCapital: capital,
         iterations: 10,
+        assetType,
         ...(selectedSymbols.length > 0 ? { symbols: selectedSymbols } : {}),
       });
       setCompResult(result);
@@ -81,7 +87,7 @@ export default function SimulationPage() {
     } finally {
       setLoading(false);
     }
-  }, [params, capital, selectedSymbols]);
+  }, [params, capital, selectedSymbols, assetType]);
 
   const handleConditions = useCallback(async () => {
     setLoading(true);
@@ -94,7 +100,8 @@ export default function SimulationPage() {
           { name: "Aggressive", params: { ...params, rsiOverbought: 80, stopLossPct: 15, maxPositionPct: 40, minBuySignal: 2 } },
         ],
         initialCapital: capital,
-        benchmark: "SPY",
+        benchmark: assetType === "crypto" ? "BTC" : "SPY",
+        assetType,
         ...(selectedSymbols.length > 0 ? { symbols: selectedSymbols } : {}),
       });
       setCondResult(result);
@@ -103,7 +110,7 @@ export default function SimulationPage() {
     } finally {
       setLoading(false);
     }
-  }, [params, capital, selectedSymbols]);
+  }, [params, capital, selectedSymbols, assetType]);
 
   const updateParam = (key: keyof StrategyParams, value: number) => {
     setParams(p => ({ ...p, [key]: value }));
@@ -163,7 +170,7 @@ export default function SimulationPage() {
                 />
               </label>
 
-              <SymbolPicker selectedSymbols={selectedSymbols} onChange={setSelectedSymbols} />
+              <SymbolPicker selectedSymbols={selectedSymbols} onChange={setSelectedSymbols} assetType={assetType} />
             </div>
 
             <button
