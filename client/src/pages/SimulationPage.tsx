@@ -21,6 +21,8 @@ const DEFAULT_PARAMS: StrategyParams = {
   maxPositionPct: 25,
   stopLossPct: 10,
   takeProfitPct: 20,
+  preferNewBuys: false,
+  newBuyLookbackDays: 5,
 };
 
 type Tab = "simulate" | "compare" | "conditions";
@@ -182,6 +184,38 @@ export default function SimulationPage({ assetType }: SimulationPageProps) {
 
             {showAdvanced && (
               <div className="space-y-2 border-t border-cyber-grid pt-2">
+                <label className="flex items-center gap-2 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={params.preferNewBuys}
+                    onChange={e => setParams(p => ({ ...p, preferNewBuys: e.target.checked }))}
+                    className="accent-[#00ff41] w-4 h-4"
+                  />
+                  <span className="text-cyber-muted text-xs font-mono group-hover:text-cyber-green transition-colors">
+                    Prefer New Buys (slow movers)
+                  </span>
+                </label>
+
+                {params.preferNewBuys && (
+                  <label className="block pl-6">
+                    <span className="text-cyber-muted text-xs font-mono flex justify-between">
+                      <span>Lookback Days</span>
+                      <span className="text-cyber-green">{params.newBuyLookbackDays}</span>
+                    </span>
+                    <input
+                      type="range"
+                      min={1}
+                      max={30}
+                      value={params.newBuyLookbackDays}
+                      onChange={e => updateParam("newBuyLookbackDays", Number(e.target.value))}
+                      className="w-full accent-[#00ff41] h-1"
+                    />
+                    <span className="text-cyber-muted text-[10px] font-mono block mt-1">
+                      Buy within this many days of a signal flip. Lower = more selective.
+                    </span>
+                  </label>
+                )}
+
                 {([
                   ["macdFastPeriod", "MACD Fast", 2, 50],
                   ["macdSlowPeriod", "MACD Slow", 5, 100],

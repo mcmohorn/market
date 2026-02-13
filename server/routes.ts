@@ -17,6 +17,8 @@ const defaultStrategy = {
   maxPositionPct: 25,
   stopLossPct: 10,
   takeProfitPct: 20,
+  preferNewBuys: false,
+  newBuyLookbackDays: 5,
 };
 
 const router = Router();

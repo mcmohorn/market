@@ -192,7 +192,7 @@ export async function runSimulation(
           signalHistory.set(sd.symbol, { lastSignal: ind.buySignal, lastChangeDay: dayIdx, changeCount: hist.changeCount + 1 });
         }
       } else {
-        signalHistory.set(sd.symbol, { lastSignal: ind.buySignal, lastChangeDay: 0, changeCount: 0 });
+        signalHistory.set(sd.symbol, { lastSignal: ind.buySignal, lastChangeDay: dayIdx, changeCount: 0 });
       }
 
       if (params.preferNewBuys && ind.buySignal) {
