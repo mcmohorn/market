@@ -3,6 +3,8 @@ import { fetchTopPerformers } from "../lib/api";
 import type { TopPerformer } from "../lib/types";
 
 interface Props {
+  assetType: string;
+  asOfDate?: string;
   onSelectSymbol: (symbol: string) => void;
 }
 
@@ -43,7 +45,7 @@ function TickerCard({ item, onClick }: { item: TopPerformer; onClick: () => void
   );
 }
 
-export default function TopPerformers({ onSelectSymbol }: Props) {
+export default function TopPerformers({ assetType, asOfDate, onSelectSymbol }: Props) {
   const [data, setData] = useState<{
     gainers: TopPerformer[];
     losers: TopPerformer[];
@@ -51,10 +53,10 @@ export default function TopPerformers({ onSelectSymbol }: Props) {
   } | null>(null);
 
   useEffect(() => {
-    fetchTopPerformers()
+    fetchTopPerformers(assetType, asOfDate)
       .then(setData)
       .catch(() => setData(null));
-  }, []);
+  }, [assetType, asOfDate]);
 
   if (!data || (data.gainers.length === 0 && data.losers.length === 0)) {
     return null;

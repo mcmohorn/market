@@ -53,12 +53,12 @@ A full-stack web application for stock and cryptocurrency market analysis. Uses 
 - `crypto.computed_signals` - Pre-computed signals for crypto
 
 ### API Endpoints
-- `GET /api/stocks` - List stocks with filtering, sorting, search
-- `GET /api/stocks/top-performers` - Top gainers, losers, strong buys
+- `GET /api/stocks` - List stocks with filtering, sorting, search (supports `asset_type`, `as_of_date`)
+- `GET /api/stocks/top-performers` - Top gainers, losers, strong buys (supports `asset_type`, `as_of_date`)
 - `GET /api/stocks/:symbol` - Stock detail with indicator history
-- `GET /api/stats` - Overall market statistics
-- `GET /api/symbols` - List all available symbols
-- `GET /api/data-range` - Data date range info
+- `GET /api/stats` - Market statistics by asset type (supports `asset_type`)
+- `GET /api/symbols` - List all available symbols (supports `asset_type`)
+- `GET /api/data-range` - Data date range info (supports `asset_type`)
 - `POST /api/simulation/run` - Run trading simulation with strategy params
 - `POST /api/simulation/compare` - Compare strategies across time periods
 - `POST /api/simulation/market-conditions` - Analyze strategy in bull/bear/sideways markets
@@ -79,8 +79,17 @@ Seed data: `npx tsx server/seed.ts` (requires API keys + optionally BigQuery cre
 - Strategy comparison across 10, 20, 30 year periods
 - Market conditions analysis (bull vs bear performance)
 - BigQuery as primary data warehouse (GCP project: market-487302, datasets: stocks, crypto)
+- Crypto and stocks should be separate views with a toggle in the header
+- Time navigation buttons to view historical data (back 1 day, 1 week, 1 month, etc.)
 
 ## Recent Changes
+- 2026-02-13: Added crypto/stocks toggle and time navigation
+  - Header has Stocks/Crypto toggle button next to LIVE indicator
+  - All API endpoints filter by asset_type (stock vs crypto)
+  - Time navigation buttons (LATEST, -1D, -1W, -1M, -3M, -6M, -1Y) in scanner
+  - Historical date queries recompute MACD/RSI signals from price_history on-the-fly
+  - TopPerformers and StockGrid both respond to time jumps
+  - StatsBar shows "Historical" label when viewing past dates
 - 2026-02-13: Added BigQuery integration
   - BigQuery connection module with table auto-creation
   - Seed script writes to both PostgreSQL (runtime) and BigQuery (warehouse)

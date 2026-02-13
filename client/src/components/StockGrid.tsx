@@ -5,12 +5,17 @@ import "ag-grid-community/styles/ag-theme-alpine.css";
 import type { ColDef } from "ag-grid-community";
 import { fetchStocks } from "../lib/api";
 import type { StockAnalysis } from "../lib/types";
+import type { TimeJump } from "../App";
+import { getAsOfDate } from "../App";
 
 interface Props {
+  assetType: string;
+  timeJump: TimeJump;
+  onTimeJumpChange: (jump: TimeJump) => void;
   onSelectSymbol: (symbol: string) => void;
 }
 
-export default function StockGrid({ onSelectSymbol }: Props) {
+export default function StockGrid({ assetType, timeJump, onTimeJumpChange, onSelectSymbol }: Props) {
   const [rowData, setRowData] = useState<StockAnalysis[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -22,9 +27,10 @@ export default function StockGrid({ onSelectSymbol }: Props) {
   const searchTimeout = useRef<NodeJS.Timeout>(undefined);
 
   const loadData = useCallback(
-    async (params?: { signal?: string; sort?: string; order?: string; search?: string }) => {
+    async (params?: { signal?: string; sort?: string; order?: string; search?: string; jump?: TimeJump }) => {
       setLoading(true);
       try {
+        const j = params?.jump ?? timeJump;
         const result = await fetchStocks({
           signal: params?.signal || filter,
           sort: params?.sort || sortCol,
@@ -32,6 +38,8 @@ export default function StockGrid({ onSelectSymbol }: Props) {
           search: params?.search ?? search,
           limit: 200,
           offset: 0,
+          asset_type: assetType,
+          as_of_date: getAsOfDate(j),
         });
         setRowData(result.data);
         setTotal(result.total);
@@ -41,8 +49,13 @@ export default function StockGrid({ onSelectSymbol }: Props) {
         setLoading(false);
       }
     },
-    [filter, sortCol, sortDir, search]
+    [filter, sortCol, sortDir, search, assetType, timeJump]
   );
+
+  useEffect(() => {
+    setSearch("");
+    setFilter("ALL");
+  }, [assetType]);
 
   useEffect(() => {
     loadData();
@@ -54,6 +67,25 @@ export default function StockGrid({ onSelectSymbol }: Props) {
     searchTimeout.current = setTimeout(() => {
       loadData({ search: val });
     }, 300);
+  };
+
+  const getTimeJumpLabel = (jump: TimeJump): string => {
+    switch (jump) {
+      case "1d": return "-1D";
+      case "1w": return "-1W";
+      case "1m": return "-1M";
+      case "3m": return "-3M";
+      case "6m": return "-6M";
+      case "1y": return "-1Y";
+      case "latest": return "LATEST";
+    }
+  };
+
+  const getTimeJumpDateDisplay = (jump: TimeJump): string => {
+    const d = getAsOfDate(jump);
+    if (!d) return "";
+    const date = new Date(d + "T00:00:00");
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   };
 
   const columnDefs: ColDef<StockAnalysis>[] = useMemo(
@@ -73,21 +105,23 @@ export default function StockGrid({ onSelectSymbol }: Props) {
         ),
       },
       { field: "name", headerName: "NAME", width: 180, cellClass: "text-cyber-muted" },
-      { field: "exchange", headerName: "EXCH", width: 80, cellClass: "text-cyber-muted text-center" },
+      ...(assetType === "stock"
+        ? [{ field: "exchange" as const, headerName: "EXCH", width: 80, cellClass: "text-cyber-muted text-center" }]
+        : []),
       {
         field: "price",
         headerName: "PRICE",
         width: 100,
         type: "numericColumn",
-        valueFormatter: (p) => p.value != null ? `$${p.value.toFixed(2)}` : "",
+        valueFormatter: (p: any) => p.value != null ? `$${p.value.toFixed(2)}` : "",
       },
       {
         field: "changePercent",
         headerName: "CHG%",
         width: 90,
         type: "numericColumn",
-        cellClass: (p) => (p.value >= 0 ? "text-cyber-green font-bold" : "text-cyber-red font-bold"),
-        valueFormatter: (p) => p.value != null ? `${p.value >= 0 ? "+" : ""}${p.value.toFixed(2)}%` : "",
+        cellClass: (p: any) => (p.value >= 0 ? "text-cyber-green font-bold" : "text-cyber-red font-bold"),
+        valueFormatter: (p: any) => p.value != null ? `${p.value >= 0 ? "+" : ""}${p.value.toFixed(2)}%` : "",
       },
       {
         field: "signal",
@@ -112,28 +146,28 @@ export default function StockGrid({ onSelectSymbol }: Props) {
         headerName: "RSI",
         width: 80,
         type: "numericColumn",
-        cellClass: (p) => {
+        cellClass: (p: any) => {
           if (!p.value) return "";
           if (p.value > 70) return "text-cyber-red";
           if (p.value < 30) return "text-cyber-green";
           return "text-cyber-yellow";
         },
-        valueFormatter: (p) => p.value != null ? p.value.toFixed(0) : "",
+        valueFormatter: (p: any) => p.value != null ? p.value.toFixed(0) : "",
       },
       {
         field: "macdHistogram",
         headerName: "MACD",
         width: 100,
         type: "numericColumn",
-        cellClass: (p) => (p.value >= 0 ? "text-cyber-green" : "text-cyber-red"),
-        valueFormatter: (p) => p.value != null ? p.value.toFixed(4) : "",
+        cellClass: (p: any) => (p.value >= 0 ? "text-cyber-green" : "text-cyber-red"),
+        valueFormatter: (p: any) => p.value != null ? p.value.toFixed(4) : "",
       },
       {
         field: "signalStrength",
         headerName: "STRENGTH",
         width: 100,
         type: "numericColumn",
-        valueFormatter: (p) => p.value != null ? p.value.toFixed(2) : "",
+        valueFormatter: (p: any) => p.value != null ? p.value.toFixed(2) : "",
       },
       {
         field: "signalChanges",
@@ -152,7 +186,7 @@ export default function StockGrid({ onSelectSymbol }: Props) {
         headerName: "VOLUME",
         width: 110,
         type: "numericColumn",
-        valueFormatter: (p) => {
+        valueFormatter: (p: any) => {
           if (!p.value) return "";
           if (p.value >= 1e9) return `${(p.value / 1e9).toFixed(1)}B`;
           if (p.value >= 1e6) return `${(p.value / 1e6).toFixed(1)}M`;
@@ -161,7 +195,7 @@ export default function StockGrid({ onSelectSymbol }: Props) {
         },
       },
     ],
-    [onSelectSymbol]
+    [onSelectSymbol, assetType]
   );
 
   const defaultColDef = useMemo(
@@ -173,13 +207,37 @@ export default function StockGrid({ onSelectSymbol }: Props) {
     []
   );
 
+  const timeJumps: TimeJump[] = ["latest", "1d", "1w", "1m", "3m", "6m", "1y"];
+
   return (
     <div>
       <div className="flex items-center gap-3 mb-3 flex-wrap">
         <div className="text-[10px] text-cyber-green uppercase tracking-[0.2em] flex items-center gap-2">
           <span className="w-1.5 h-1.5 bg-cyber-green rounded-full" />
-          MARKET SCANNER
+          {assetType === "crypto" ? "CRYPTO SCANNER" : "MARKET SCANNER"}
         </div>
+
+        <div className="flex gap-0.5 ml-2 bg-cyber-bg rounded border border-cyber-border overflow-hidden">
+          {timeJumps.map((jump) => (
+            <button
+              key={jump}
+              onClick={() => onTimeJumpChange(jump)}
+              className={`px-2 py-1 text-[10px] font-bold transition-all ${
+                timeJump === jump
+                  ? "bg-cyber-green/20 text-cyber-green"
+                  : "text-cyber-muted hover:text-cyber-green/70"
+              }`}
+            >
+              {getTimeJumpLabel(jump)}
+            </button>
+          ))}
+        </div>
+
+        {timeJump !== "latest" && (
+          <div className="text-[10px] text-cyber-muted">
+            Viewing: {getTimeJumpDateDisplay(timeJump)}
+          </div>
+        )}
 
         <div className="flex gap-1 ml-auto">
           {["ALL", "BUY", "SELL", "HOLD"].map((f) => (
@@ -230,7 +288,7 @@ export default function StockGrid({ onSelectSymbol }: Props) {
           onRowDoubleClicked={(e) => e.data && onSelectSymbol(e.data.symbol)}
           loading={loading}
           overlayNoRowsTemplate={
-            '<div class="text-cyber-muted text-sm p-8">No data available. Run seed-db to load market data.</div>'
+            `<div class="text-cyber-muted text-sm p-8">No ${assetType === "crypto" ? "crypto" : "stock"} data available. Run seed-db to load market data.</div>`
           }
         />
       </div>

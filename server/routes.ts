@@ -21,13 +21,116 @@ const defaultStrategy = {
 
 const router = Router();
 
+function getAssetTypeFilter(assetType: string | undefined): string {
+  if (assetType === "crypto") return "crypto";
+  return "stock";
+}
+
+async function computeSignalsAsOfDate(assetFilter: string, asOfDate: string, signalFilter?: string, searchFilter?: string, sortCol?: string, sortOrder?: string, lim?: number, off?: number) {
+  const symbolsResult = await pool.query(
+    `SELECT DISTINCT ph.symbol, s.name, s.exchange, s.sector
+     FROM price_history ph
+     LEFT JOIN stocks s ON s.symbol = ph.symbol
+     WHERE ph.asset_type = $1
+     ORDER BY ph.symbol`,
+    [assetFilter]
+  );
+
+  const allResults: any[] = [];
+
+  for (const row of symbolsResult.rows) {
+    const sym = row.symbol;
+    const priceResult = await pool.query(
+      `SELECT date, open, high, low, close, volume FROM price_history WHERE symbol = $1 AND asset_type = $2 AND date <= $3 ORDER BY date ASC`,
+      [sym, assetFilter, asOfDate]
+    );
+
+    if (priceResult.rows.length < 2) continue;
+
+    const bars: StockBar[] = priceResult.rows.map((r: any) => ({
+      date: r.date.toISOString().split("T")[0],
+      open: r.open,
+      high: r.high,
+      low: r.low,
+      close: r.close,
+      volume: r.volume,
+    }));
+
+    const indicators = analyzeStock(bars);
+    if (indicators.length === 0) continue;
+
+    const last = indicators[indicators.length - 1];
+    const signal = getSignal(indicators);
+    const strength = getSignalStrength(indicators);
+    const changes = countSignalChanges(indicators);
+    const lastChange = lastSignalChangeDate(indicators);
+    const firstBar = bars[0];
+    const lastBar = bars[bars.length - 1];
+    const change = lastBar.close - firstBar.close;
+    const changePercent = firstBar.close !== 0 ? (change / firstBar.close) * 100 : 0;
+
+    if (signalFilter && signalFilter !== "ALL" && signal !== signalFilter) continue;
+    if (searchFilter && !sym.toLowerCase().includes(searchFilter.toLowerCase()) &&
+        !(row.name || "").toLowerCase().includes(searchFilter.toLowerCase())) continue;
+
+    allResults.push({
+      symbol: sym,
+      name: row.name || sym,
+      exchange: row.exchange || "",
+      sector: row.sector || "",
+      price: lastBar.close,
+      change,
+      changePercent,
+      signal,
+      macdHistogram: last.macdHistogram,
+      macdHistogramAdjusted: last.macdHistogramAdjusted,
+      rsi: last.rsi,
+      signalStrength: strength,
+      lastSignalChange: lastChange,
+      signalChanges: changes,
+      dataPoints: bars.length,
+      volume: lastBar.volume,
+    });
+  }
+
+  const col = sortCol || "change_percent";
+  const dir = sortOrder === "asc" ? 1 : -1;
+  allResults.sort((a, b) => {
+    const va = (a as any)[col === "change_percent" ? "changePercent" : col === "signal_strength" ? "signalStrength" : col === "macd_histogram" ? "macdHistogram" : col] ?? 0;
+    const vb = (b as any)[col === "change_percent" ? "changePercent" : col === "signal_strength" ? "signalStrength" : col === "macd_histogram" ? "macdHistogram" : col] ?? 0;
+    return (va - vb) * dir;
+  });
+
+  const total = allResults.length;
+  const sliced = allResults.slice(off || 0, (off || 0) + (lim || 100));
+
+  return { data: sliced, total };
+}
+
 router.get("/api/stocks", async (req, res) => {
   try {
-    const { signal, sort, order, search, limit, offset } = req.query;
+    const { signal, sort, order, search, limit, offset, asset_type, as_of_date } = req.query;
+    const assetFilter = getAssetTypeFilter(asset_type as string);
+    const lim = Math.min(parseInt(limit as string) || 100, 500);
+    const off = parseInt(offset as string) || 0;
 
-    let query = `SELECT * FROM computed_signals WHERE 1=1`;
-    const params: any[] = [];
-    let paramIdx = 1;
+    if (as_of_date && typeof as_of_date === "string") {
+      const result = await computeSignalsAsOfDate(
+        assetFilter,
+        as_of_date,
+        signal as string,
+        search as string,
+        sort as string,
+        order as string,
+        lim,
+        off
+      );
+      return res.json(result);
+    }
+
+    let query = `SELECT * FROM computed_signals WHERE asset_type = $1`;
+    const params: any[] = [assetFilter];
+    let paramIdx = 2;
 
     if (signal && signal !== "ALL") {
       query += ` AND signal = $${paramIdx++}`;
@@ -46,15 +149,23 @@ router.get("/api/stocks", async (req, res) => {
     const safeSort = validCols.includes(sortCol) ? sortCol : "change_percent";
     query += ` ORDER BY ${safeSort} ${sortOrder}`;
 
-    const lim = Math.min(parseInt(limit as string) || 100, 500);
-    const off = parseInt(offset as string) || 0;
     query += ` LIMIT $${paramIdx++} OFFSET $${paramIdx++}`;
     params.push(lim, off);
 
     const result = await pool.query(query, params);
 
-    const countQuery = `SELECT COUNT(*) as total FROM computed_signals WHERE 1=1${signal && signal !== "ALL" ? ` AND signal = '${signal}'` : ""}`;
-    const countResult = await pool.query(countQuery);
+    let countQuery = `SELECT COUNT(*) as total FROM computed_signals WHERE asset_type = $1`;
+    const countParams: any[] = [assetFilter];
+    if (signal && signal !== "ALL") {
+      countQuery += ` AND signal = $2`;
+      countParams.push(signal);
+    }
+    if (search) {
+      const searchIdx = countParams.length + 1;
+      countQuery += ` AND (symbol ILIKE $${searchIdx} OR name ILIKE $${searchIdx})`;
+      countParams.push(`%${search}%`);
+    }
+    const countResult = await pool.query(countQuery, countParams);
 
     res.json({
       data: result.rows.map(row => ({
@@ -85,14 +196,48 @@ router.get("/api/stocks", async (req, res) => {
 
 router.get("/api/stocks/top-performers", async (req, res) => {
   try {
+    const assetFilter = getAssetTypeFilter(req.query.asset_type as string);
+    const asOfDate = req.query.as_of_date as string | undefined;
+
+    if (asOfDate) {
+      const result = await computeSignalsAsOfDate(assetFilter, asOfDate);
+      const all = result.data;
+
+      const sorted = [...all].sort((a, b) => b.changePercent - a.changePercent);
+      const gainers = sorted.slice(0, 10);
+      const losers = [...all].sort((a, b) => a.changePercent - b.changePercent).slice(0, 10);
+      const strongBuys = all
+        .filter((r: any) => r.signal === "BUY")
+        .sort((a: any, b: any) => b.signalStrength - a.signalStrength)
+        .slice(0, 10);
+
+      const mapRow = (row: any) => ({
+        symbol: row.symbol,
+        name: row.name,
+        price: row.price,
+        changePercent: row.changePercent,
+        signal: row.signal,
+        rsi: row.rsi,
+      });
+
+      return res.json({
+        gainers: gainers.map(mapRow),
+        losers: losers.map(mapRow),
+        strongBuys: strongBuys.map(mapRow),
+      });
+    }
+
     const gainers = await pool.query(
-      `SELECT * FROM computed_signals ORDER BY change_percent DESC LIMIT 10`
+      `SELECT * FROM computed_signals WHERE asset_type = $1 ORDER BY change_percent DESC LIMIT 10`,
+      [assetFilter]
     );
     const losers = await pool.query(
-      `SELECT * FROM computed_signals ORDER BY change_percent ASC LIMIT 10`
+      `SELECT * FROM computed_signals WHERE asset_type = $1 ORDER BY change_percent ASC LIMIT 10`,
+      [assetFilter]
     );
     const strongBuys = await pool.query(
-      `SELECT * FROM computed_signals WHERE signal = 'BUY' ORDER BY signal_strength DESC LIMIT 10`
+      `SELECT * FROM computed_signals WHERE asset_type = $1 AND signal = 'BUY' ORDER BY signal_strength DESC LIMIT 10`,
+      [assetFilter]
     );
 
     const mapRow = (row: any) => ({
@@ -179,11 +324,13 @@ router.get("/api/stocks/:symbol", async (req, res) => {
 
 router.get("/api/stats", async (req, res) => {
   try {
-    const total = await pool.query(`SELECT COUNT(*) as count FROM computed_signals`);
-    const buys = await pool.query(`SELECT COUNT(*) as count FROM computed_signals WHERE signal = 'BUY'`);
-    const sells = await pool.query(`SELECT COUNT(*) as count FROM computed_signals WHERE signal = 'SELL'`);
-    const holds = await pool.query(`SELECT COUNT(*) as count FROM computed_signals WHERE signal = 'HOLD'`);
-    const lastUpdate = await pool.query(`SELECT MAX(computed_at) as last_update FROM computed_signals`);
+    const assetFilter = getAssetTypeFilter(req.query.asset_type as string);
+
+    const total = await pool.query(`SELECT COUNT(*) as count FROM computed_signals WHERE asset_type = $1`, [assetFilter]);
+    const buys = await pool.query(`SELECT COUNT(*) as count FROM computed_signals WHERE asset_type = $1 AND signal = 'BUY'`, [assetFilter]);
+    const sells = await pool.query(`SELECT COUNT(*) as count FROM computed_signals WHERE asset_type = $1 AND signal = 'SELL'`, [assetFilter]);
+    const holds = await pool.query(`SELECT COUNT(*) as count FROM computed_signals WHERE asset_type = $1 AND signal = 'HOLD'`, [assetFilter]);
+    const lastUpdate = await pool.query(`SELECT MAX(computed_at) as last_update FROM computed_signals WHERE asset_type = $1`, [assetFilter]);
 
     res.json({
       total: parseInt(total.rows[0].count),
@@ -200,8 +347,10 @@ router.get("/api/stats", async (req, res) => {
 
 router.get("/api/symbols", async (req, res) => {
   try {
+    const assetFilter = getAssetTypeFilter(req.query.asset_type as string);
     const result = await pool.query(
-      `SELECT DISTINCT symbol FROM price_history ORDER BY symbol`
+      `SELECT DISTINCT symbol FROM price_history WHERE asset_type = $1 ORDER BY symbol`,
+      [assetFilter]
     );
     res.json(result.rows.map(r => r.symbol));
   } catch (err) {
@@ -212,8 +361,10 @@ router.get("/api/symbols", async (req, res) => {
 
 router.get("/api/data-range", async (req, res) => {
   try {
+    const assetFilter = getAssetTypeFilter(req.query.asset_type as string);
     const result = await pool.query(
-      `SELECT MIN(date) as min_date, MAX(date) as max_date, COUNT(DISTINCT symbol) as symbol_count, COUNT(*) as total_bars FROM price_history`
+      `SELECT MIN(date) as min_date, MAX(date) as max_date, COUNT(DISTINCT symbol) as symbol_count, COUNT(*) as total_bars FROM price_history WHERE asset_type = $1`,
+      [assetFilter]
     );
     const row = result.rows[0];
     res.json({

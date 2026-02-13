@@ -9,6 +9,8 @@ export async function fetchStocks(params: {
   search?: string;
   limit?: number;
   offset?: number;
+  asset_type?: string;
+  as_of_date?: string;
 }): Promise<{ data: StockAnalysis[]; total: number }> {
   const qs = new URLSearchParams();
   if (params.signal) qs.set("signal", params.signal);
@@ -17,18 +19,23 @@ export async function fetchStocks(params: {
   if (params.search) qs.set("search", params.search);
   if (params.limit) qs.set("limit", String(params.limit));
   if (params.offset) qs.set("offset", String(params.offset));
+  if (params.asset_type) qs.set("asset_type", params.asset_type);
+  if (params.as_of_date) qs.set("as_of_date", params.as_of_date);
 
   const res = await fetch(`${BASE}/api/stocks?${qs.toString()}`);
   if (!res.ok) throw new Error("Failed to fetch stocks");
   return res.json();
 }
 
-export async function fetchTopPerformers(): Promise<{
+export async function fetchTopPerformers(assetType?: string, asOfDate?: string): Promise<{
   gainers: TopPerformer[];
   losers: TopPerformer[];
   strongBuys: TopPerformer[];
 }> {
-  const res = await fetch(`${BASE}/api/stocks/top-performers`);
+  const qs = new URLSearchParams();
+  if (assetType) qs.set("asset_type", assetType);
+  if (asOfDate) qs.set("as_of_date", asOfDate);
+  const res = await fetch(`${BASE}/api/stocks/top-performers?${qs.toString()}`);
   if (!res.ok) throw new Error("Failed to fetch top performers");
   return res.json();
 }
@@ -39,31 +46,37 @@ export async function fetchStockDetail(symbol: string): Promise<StockDetail> {
   return res.json();
 }
 
-export async function fetchStats(): Promise<{
+export async function fetchStats(assetType?: string): Promise<{
   total: number;
   buys: number;
   sells: number;
   holds: number;
   lastUpdate: string | null;
 }> {
-  const res = await fetch(`${BASE}/api/stats`);
+  const qs = new URLSearchParams();
+  if (assetType) qs.set("asset_type", assetType);
+  const res = await fetch(`${BASE}/api/stats?${qs.toString()}`);
   if (!res.ok) throw new Error("Failed to fetch stats");
   return res.json();
 }
 
-export async function fetchSymbols(): Promise<string[]> {
-  const res = await fetch(`${BASE}/api/symbols`);
+export async function fetchSymbols(assetType?: string): Promise<string[]> {
+  const qs = new URLSearchParams();
+  if (assetType) qs.set("asset_type", assetType);
+  const res = await fetch(`${BASE}/api/symbols?${qs.toString()}`);
   if (!res.ok) throw new Error("Failed to fetch symbols");
   return res.json();
 }
 
-export async function fetchDataRange(): Promise<{
+export async function fetchDataRange(assetType?: string): Promise<{
   minDate: string | null;
   maxDate: string | null;
   symbolCount: number;
   totalBars: number;
 }> {
-  const res = await fetch(`${BASE}/api/data-range`);
+  const qs = new URLSearchParams();
+  if (assetType) qs.set("asset_type", assetType);
+  const res = await fetch(`${BASE}/api/data-range?${qs.toString()}`);
   if (!res.ok) throw new Error("Failed to fetch data range");
   return res.json();
 }
