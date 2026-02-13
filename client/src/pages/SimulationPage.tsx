@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { SimulationResult, StrategyParams, StrategyComparison, MarketConditionResult } from "../../../shared/types";
 import { runSimulation, compareStrategies, analyzeMarketConditions } from "../lib/api";
 import EquityCurve from "../components/EquityCurve";
@@ -33,6 +33,33 @@ interface SimulationPageProps {
 
 const STOCK_EXCHANGES = ["ALL", "NYSE", "NASDAQ", "ARCA", "BATS", "AMEX"];
 
+const PRESETS_KEY = "mateo_sim_presets";
+
+interface SimPreset {
+  name: string;
+  savedAt: string;
+  startDate: string;
+  endDate: string;
+  capital: number;
+  params: StrategyParams;
+  symbols: string[];
+  exchange: string;
+  assetType: string;
+}
+
+function loadPresets(): SimPreset[] {
+  try {
+    const raw = localStorage.getItem(PRESETS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePresets(presets: SimPreset[]) {
+  localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+}
+
 export default function SimulationPage({ assetType }: SimulationPageProps) {
   const [tab, setTab] = useState<Tab>("simulate");
   const [loading, setLoading] = useState(false);
@@ -45,6 +72,48 @@ export default function SimulationPage({ assetType }: SimulationPageProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [selectedSymbols, setSelectedSymbols] = useState<string[]>([]);
   const [exchange, setExchange] = useState("ALL");
+
+  const [presets, setPresets] = useState<SimPreset[]>(loadPresets);
+  const [showPresets, setShowPresets] = useState(false);
+  const [presetName, setPresetName] = useState("");
+  const [showSaveInput, setShowSaveInput] = useState(false);
+
+  const handleSavePreset = () => {
+    const name = presetName.trim();
+    if (!name) return;
+    const preset: SimPreset = {
+      name,
+      savedAt: new Date().toISOString(),
+      startDate,
+      endDate,
+      capital,
+      params,
+      symbols: selectedSymbols,
+      exchange,
+      assetType,
+    };
+    const updated = [preset, ...presets.filter(p => p.name !== name)];
+    savePresets(updated);
+    setPresets(updated);
+    setPresetName("");
+    setShowSaveInput(false);
+  };
+
+  const handleLoadPreset = (preset: SimPreset) => {
+    setStartDate(preset.startDate);
+    setEndDate(preset.endDate);
+    setCapital(preset.capital);
+    setParams({ ...DEFAULT_PARAMS, ...preset.params });
+    setSelectedSymbols(preset.symbols || []);
+    setExchange(preset.exchange || "ALL");
+    setShowPresets(false);
+  };
+
+  const handleDeletePreset = (name: string) => {
+    const updated = presets.filter(p => p.name !== name);
+    savePresets(updated);
+    setPresets(updated);
+  };
 
   const [simResult, setSimResult] = useState<SimulationResult | null>(null);
   const [compResult, setCompResult] = useState<StrategyComparison | null>(null);
@@ -290,6 +359,78 @@ export default function SimulationPage({ assetType }: SimulationPageProps) {
                 tab === "simulate" ? "EXECUTE SIMULATION" : tab === "compare" ? "COMPARE STRATEGIES" : "ANALYZE CONDITIONS"
               )}
             </button>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setShowSaveInput(!showSaveInput); setShowPresets(false); }}
+                className="flex-1 py-1.5 text-[11px] font-mono uppercase tracking-wider border border-cyber-grid text-cyber-muted hover:border-cyber-green hover:text-cyber-green transition-all"
+              >
+                Save Settings
+              </button>
+              <button
+                onClick={() => { setShowPresets(!showPresets); setShowSaveInput(false); }}
+                className="flex-1 py-1.5 text-[11px] font-mono uppercase tracking-wider border border-cyber-grid text-cyber-muted hover:border-cyber-green hover:text-cyber-green transition-all"
+              >
+                Load ({presets.length})
+              </button>
+            </div>
+
+            {showSaveInput && (
+              <div className="border border-cyber-grid p-2 space-y-2">
+                <input
+                  type="text"
+                  value={presetName}
+                  onChange={e => setPresetName(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handleSavePreset()}
+                  placeholder="Preset name..."
+                  className="w-full bg-cyber-bg border border-cyber-grid text-cyber-text px-2 py-1 text-xs font-mono focus:border-cyber-green outline-none"
+                  autoFocus
+                />
+                <button
+                  onClick={handleSavePreset}
+                  disabled={!presetName.trim()}
+                  className="w-full py-1 text-[11px] font-mono uppercase bg-cyber-green/20 text-cyber-green border border-cyber-green/30 hover:bg-cyber-green/30 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  Save
+                </button>
+              </div>
+            )}
+
+            {showPresets && (
+              <div className="border border-cyber-grid p-2 space-y-1 max-h-[250px] overflow-y-auto">
+                {presets.length === 0 ? (
+                  <p className="text-cyber-muted text-[11px] font-mono text-center py-2">No saved presets</p>
+                ) : (
+                  presets.map(p => (
+                    <div
+                      key={p.name}
+                      className="flex items-center gap-1 border border-cyber-grid/50 hover:border-cyber-green/50 transition-all group"
+                    >
+                      <button
+                        onClick={() => handleLoadPreset(p)}
+                        className="flex-1 text-left px-2 py-1.5 min-w-0"
+                      >
+                        <div className="text-cyber-text text-xs font-mono truncate group-hover:text-cyber-green transition-colors">
+                          {p.name}
+                        </div>
+                        <div className="text-cyber-muted text-[10px] font-mono">
+                          {p.assetType === "crypto" ? "Crypto" : "Stocks"}{p.exchange !== "ALL" ? ` / ${p.exchange}` : ""}
+                          {" "}&middot; ${p.capital.toLocaleString()}
+                          {" "}&middot; {new Date(p.savedAt).toLocaleDateString()}
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => handleDeletePreset(p.name)}
+                        className="px-2 py-1 text-cyber-muted hover:text-red-400 text-[11px] transition-colors shrink-0"
+                        title="Delete preset"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
           </div>
 
           {simResult && tab === "simulate" && (
