@@ -83,6 +83,10 @@ Seed data: `npx tsx server/seed.ts` (requires API keys + optionally BigQuery cre
 - Time navigation buttons to view historical data (back 1 day, 1 week, 1 month, etc.)
 
 ## Recent Changes
+- 2026-02-13: Added portfolio symbol picker to Simulation Lab
+  - SymbolPicker component with search/type-ahead, selected chips, and clear all
+  - Optional multi-select — leave empty to trade all symbols, or pick specific ones
+  - Wired to all three simulation modes (simulate, compare, market conditions)
 - 2026-02-13: Added Signal Change Alerts section
   - New /api/stocks/signal-alerts endpoint with alertScore ranking (slow movers ranked higher)
   - SignalAlerts component above TopPerformers shows recent BUY↔SELL flips
