@@ -83,6 +83,17 @@ Seed data: `npx tsx server/seed.ts` (requires API keys + optionally BigQuery cre
 - Time navigation buttons to view historical data (back 1 day, 1 week, 1 month, etc.)
 
 ## Recent Changes
+- 2026-02-13: Added "Prefer New Buys" simulation setting
+  - New StrategyParams: preferNewBuys (boolean), newBuyLookbackDays (number, default 5)
+  - When enabled, simulation prioritizes buying symbols that recently flipped to BUY
+  - Slow movers (symbols that rarely change signal) get higher priority via rarityBoost
+  - Scoring: newBuyScore = recencyBoost * rarityBoost (recency decays over lookback window, rarity capped at 5x)
+  - Checkbox toggle + lookback days slider in Advanced Settings
+  - Trade log shows "New buy score" in reason when feature triggers a buy
+- 2026-02-13: Added assetType filtering to Simulation Lab
+  - All three simulation modes (run, compare, market conditions) filter by current Stocks/Crypto toggle
+  - SymbolPicker reloads and clears selection when asset type changes
+  - Market Conditions uses BTC as benchmark for crypto, SPY for stocks
 - 2026-02-13: Added HOLD signal with combined multi-indicator rule-set
   - New indicators: ADX (14-period Welles Wilder), 50-period MA, Bollinger Bandwidth (20-period)
   - HOLD triggers when 4 of 5 conditions met: RSI 45-55, MACD histogram <0.1% of price, no crossover in 5 bars, price within 2% of MA50, ADX <20
