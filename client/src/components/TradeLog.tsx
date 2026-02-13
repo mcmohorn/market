@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import type { TradeRecord } from "../../../shared/types";
 
 interface Props {
@@ -7,20 +7,37 @@ interface Props {
 
 export default function TradeLog({ trades }: Props) {
   const [expanded, setExpanded] = useState(false);
-  const displayTrades = expanded ? trades : trades.slice(-50);
+  const [filterSymbol, setFilterSymbol] = useState<string | null>(null);
+
+  const filteredTrades = useMemo(() => {
+    if (!filterSymbol) return trades;
+    return trades.filter((t) => t.symbol === filterSymbol);
+  }, [trades, filterSymbol]);
+
+  const displayTrades = expanded ? filteredTrades : filteredTrades.slice(-50);
 
   return (
     <div className="border border-cyber-grid p-3">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-cyber-green font-mono text-sm uppercase tracking-wider">
-          Trade Log ({trades.length} trades)
-        </h3>
-        {trades.length > 50 && (
+        <div className="flex items-center gap-3">
+          <h3 className="text-cyber-green font-mono text-sm uppercase tracking-wider">
+            Trade Log ({filteredTrades.length}{filterSymbol ? `/${trades.length}` : ""} trades)
+          </h3>
+          {filterSymbol && (
+            <button
+              onClick={() => setFilterSymbol(null)}
+              className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-mono bg-cyber-green/20 text-cyber-green border border-cyber-green/30 hover:bg-cyber-green/30 transition-colors"
+            >
+              {filterSymbol} <span className="text-[9px] ml-0.5">✕</span>
+            </button>
+          )}
+        </div>
+        {filteredTrades.length > 50 && (
           <button
             onClick={() => setExpanded(!expanded)}
             className="text-cyber-muted text-xs font-mono hover:text-cyber-green"
           >
-            {expanded ? "Show Recent" : `Show All (${trades.length})`}
+            {expanded ? "Show Recent" : `Show All (${filteredTrades.length})`}
           </button>
         )}
       </div>
@@ -54,7 +71,16 @@ export default function TradeLog({ trades }: Props) {
                     {trade.action}
                   </span>
                 </td>
-                <td className="py-1 px-2 text-cyber-text">{trade.symbol}</td>
+                <td className="py-1 px-2">
+                  <button
+                    onClick={() => setFilterSymbol(filterSymbol === trade.symbol ? null : trade.symbol)}
+                    className={`hover:text-cyber-green cursor-pointer transition-colors ${
+                      filterSymbol === trade.symbol ? "text-cyber-green underline" : "text-cyber-text"
+                    }`}
+                  >
+                    {trade.symbol}
+                  </button>
+                </td>
                 <td className="py-1 px-2 text-right text-cyber-text">{trade.quantity}</td>
                 <td className="py-1 px-2 text-right text-cyber-text">
                   ${trade.price.toFixed(2)}
