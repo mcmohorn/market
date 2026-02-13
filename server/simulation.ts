@@ -171,10 +171,12 @@ export async function runSimulation(
   let maxDrawdown = 0;
   let maxDrawdownPct = 0;
 
+  const signalHistory: Map<string, { lastSignal: boolean; lastChangeDay: number; changeCount: number }> = new Map();
+
   for (let dayIdx = 0; dayIdx < sortedDates.length; dayIdx++) {
     const date = sortedDates[dayIdx];
 
-    const candidates: { symbol: string; bar: StockBar; indicator: IndicatorData; diffAdjusted: number }[] = [];
+    const candidates: { symbol: string; bar: StockBar; indicator: IndicatorData; diffAdjusted: number; newBuyScore: number }[] = [];
 
     for (const sd of allData) {
       const barIdx = sd.bars.findIndex(b => b.date === date);
@@ -183,11 +185,33 @@ export async function runSimulation(
       const bar = sd.bars[barIdx];
       const ind = sd.indicators[barIdx];
 
+      let newBuyScore = 0;
+      const hist = signalHistory.get(sd.symbol);
+      if (hist) {
+        if (ind.buySignal !== hist.lastSignal) {
+          signalHistory.set(sd.symbol, { lastSignal: ind.buySignal, lastChangeDay: dayIdx, changeCount: hist.changeCount + 1 });
+        }
+      } else {
+        signalHistory.set(sd.symbol, { lastSignal: ind.buySignal, lastChangeDay: 0, changeCount: 0 });
+      }
+
+      if (params.preferNewBuys && ind.buySignal) {
+        const sh = signalHistory.get(sd.symbol)!;
+        const daysSinceChange = dayIdx - sh.lastChangeDay;
+        if (daysSinceChange <= params.newBuyLookbackDays && daysSinceChange >= 0) {
+          const avgDaysBetween = sh.changeCount > 0 ? dayIdx / sh.changeCount : dayIdx;
+          const recencyBoost = 1 - (daysSinceChange / (params.newBuyLookbackDays + 1));
+          const rarityBoost = Math.min(avgDaysBetween / 20, 5);
+          newBuyScore = recencyBoost * rarityBoost;
+        }
+      }
+
       candidates.push({
         symbol: sd.symbol,
         bar,
         indicator: ind,
         diffAdjusted: ind.macdHistogramAdjusted,
+        newBuyScore,
       });
     }
 
@@ -230,7 +254,14 @@ export async function runSimulation(
       }
     }
 
-    candidates.sort((a, b) => b.diffAdjusted - a.diffAdjusted);
+    if (params.preferNewBuys) {
+      candidates.sort((a, b) => {
+        if (b.newBuyScore !== a.newBuyScore) return b.newBuyScore - a.newBuyScore;
+        return b.diffAdjusted - a.diffAdjusted;
+      });
+    } else {
+      candidates.sort((a, b) => b.diffAdjusted - a.diffAdjusted);
+    }
 
     for (const cand of candidates) {
       if (cash <= params.minCashReserve) break;
@@ -259,10 +290,15 @@ export async function runSimulation(
         avgCost: cand.bar.close,
       });
 
+      const reasonParts = [`MACD buy signal (adj: ${(cand.indicator.macdHistogramAdjusted * 10000).toFixed(2)}, RSI: ${cand.indicator.rsi.toFixed(1)})`];
+      if (params.preferNewBuys && cand.newBuyScore > 0) {
+        reasonParts.push(`New buy score: ${cand.newBuyScore.toFixed(2)}`);
+      }
+
       trades.push({
         date, symbol: cand.symbol, action: "BUY",
         quantity, price: cand.bar.close, total,
-        reason: `MACD buy signal (adj: ${(cand.indicator.macdHistogramAdjusted * 10000).toFixed(2)}, RSI: ${cand.indicator.rsi.toFixed(1)})`,
+        reason: reasonParts.join(" | "),
       });
     }
 

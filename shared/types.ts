@@ -73,6 +73,8 @@ export interface StrategyParams {
   maxPositionPct: number;
   stopLossPct: number;
   takeProfitPct: number;
+  preferNewBuys: boolean;
+  newBuyLookbackDays: number;
 }
 
 export const DEFAULT_STRATEGY: StrategyParams = {
@@ -88,6 +90,8 @@ export const DEFAULT_STRATEGY: StrategyParams = {
   maxPositionPct: 25,
   stopLossPct: 10,
   takeProfitPct: 20,
+  preferNewBuys: false,
+  newBuyLookbackDays: 5,
 };
 
 export interface TradeRecord {
