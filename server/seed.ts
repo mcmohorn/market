@@ -228,7 +228,7 @@ async function storePriceDataBigQuery(allBars: Record<string, StockBar[]>, datas
   }
 }
 
-async function computeAndStoreSignals() {
+async function computeAndStoreSignals(bigqueryReady: boolean = false) {
   console.log("Computing indicators for all symbols...");
   const client = await pool.connect();
   try {
@@ -286,7 +286,7 @@ async function computeAndStoreSignals() {
         ]
       );
 
-      if (USE_BIGQUERY) {
+      if (bigqueryReady) {
         const bqDataset = meta.asset_type === "crypto" ? CRYPTO_DATASET : STOCKS_DATASET;
         bqSignalRows.push({
           dataset: bqDataset,
@@ -320,7 +320,7 @@ async function computeAndStoreSignals() {
     }
     console.log(`Computed signals for ${processed} symbols total`);
 
-    if (USE_BIGQUERY && bqSignalRows.length > 0) {
+    if (bigqueryReady && bqSignalRows.length > 0) {
       const stockSignals = bqSignalRows.filter(r => r.dataset === STOCKS_DATASET).map(r => r.row);
       const cryptoSignals = bqSignalRows.filter(r => r.dataset === CRYPTO_DATASET).map(r => r.row);
 
@@ -347,10 +347,20 @@ async function main() {
   console.log("Initializing PostgreSQL...");
   await initDB();
 
+  let bigqueryReady = false;
   if (USE_BIGQUERY) {
     console.log("Initializing BigQuery tables...");
     try {
       await ensureBigQueryTables();
+      console.log("Clearing existing BigQuery data for fresh seed...");
+      await clearTable(STOCKS_DATASET, "price_history");
+      await clearTable(STOCKS_DATASET, "metadata");
+      await clearTable(STOCKS_DATASET, "computed_signals");
+      await clearTable(CRYPTO_DATASET, "price_history");
+      await clearTable(CRYPTO_DATASET, "metadata");
+      await clearTable(CRYPTO_DATASET, "computed_signals");
+      console.log("BigQuery tables cleared");
+      bigqueryReady = true;
     } catch (err: any) {
       console.warn("BigQuery setup warning:", err.message);
       console.log("Will continue with PostgreSQL only. Set GOOGLE_CREDENTIALS_JSON to enable BigQuery.");
@@ -376,7 +386,7 @@ async function main() {
       await storePriceDataPostgres(bars, "stock", assetMeta);
       console.log(`  Stored ${Object.keys(bars).length} symbols to PostgreSQL`);
 
-      if (USE_BIGQUERY) {
+      if (bigqueryReady) {
         try {
           await storePriceDataBigQuery(bars, STOCKS_DATASET, assetMeta);
           console.log(`  Stored ${Object.keys(bars).length} symbols to BigQuery`);
@@ -398,7 +408,7 @@ async function main() {
     await storePriceDataPostgres(cryptoBars, "crypto", cryptoMeta);
     console.log(`Stored ${Object.keys(cryptoBars).length} crypto symbols to PostgreSQL`);
 
-    if (USE_BIGQUERY) {
+    if (bigqueryReady) {
       try {
         await storePriceDataBigQuery(cryptoBars, CRYPTO_DATASET, cryptoMeta);
         console.log(`Stored ${Object.keys(cryptoBars).length} crypto symbols to BigQuery`);
@@ -411,7 +421,7 @@ async function main() {
     console.log("Set TIINGO_API_TOKEN to fetch crypto data");
   }
 
-  await computeAndStoreSignals();
+  await computeAndStoreSignals(bigqueryReady);
   console.log("=== Seed complete ===");
   process.exit(0);
 }
