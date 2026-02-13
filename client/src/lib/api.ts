@@ -2,6 +2,14 @@ import type { StockAnalysis, StockDetail, TopPerformer, SimulationResult, Simula
 
 const BASE = "";
 
+export async function fetchSectors(assetType?: string): Promise<string[]> {
+  const qs = new URLSearchParams();
+  if (assetType) qs.set("asset_type", assetType);
+  const res = await fetch(`${BASE}/api/sectors?${qs.toString()}`);
+  if (!res.ok) throw new Error("Failed to fetch sectors");
+  return res.json();
+}
+
 export async function fetchStocks(params: {
   signal?: string;
   sort?: string;
@@ -11,6 +19,7 @@ export async function fetchStocks(params: {
   offset?: number;
   asset_type?: string;
   as_of_date?: string;
+  sector?: string;
 }): Promise<{ data: StockAnalysis[]; total: number }> {
   const qs = new URLSearchParams();
   if (params.signal) qs.set("signal", params.signal);
@@ -21,6 +30,7 @@ export async function fetchStocks(params: {
   if (params.offset) qs.set("offset", String(params.offset));
   if (params.asset_type) qs.set("asset_type", params.asset_type);
   if (params.as_of_date) qs.set("as_of_date", params.as_of_date);
+  if (params.sector && params.sector !== "ALL") qs.set("sector", params.sector);
 
   const res = await fetch(`${BASE}/api/stocks?${qs.toString()}`);
   if (!res.ok) throw new Error("Failed to fetch stocks");

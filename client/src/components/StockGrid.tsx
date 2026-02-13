@@ -3,7 +3,7 @@ import { AgGridReact } from "ag-grid-react";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import type { ColDef } from "ag-grid-community";
-import { fetchStocks } from "../lib/api";
+import { fetchStocks, fetchSectors } from "../lib/api";
 import type { StockAnalysis } from "../lib/types";
 import type { TimeJump } from "../App";
 import { getAsOfDate } from "../App";
@@ -20,14 +20,24 @@ export default function StockGrid({ assetType, timeJump, onTimeJumpChange, onSel
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState("ALL");
+  const [sector, setSector] = useState("ALL");
+  const [sectors, setSectors] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [sortCol, setSortCol] = useState("change_percent");
   const [sortDir, setSortDir] = useState("desc");
   const gridRef = useRef<AgGridReact<StockAnalysis>>(null);
   const searchTimeout = useRef<NodeJS.Timeout>(undefined);
 
+  useEffect(() => {
+    if (assetType === "stock") {
+      fetchSectors(assetType).then(setSectors).catch(() => setSectors([]));
+    } else {
+      setSectors([]);
+    }
+  }, [assetType]);
+
   const loadData = useCallback(
-    async (params?: { signal?: string; sort?: string; order?: string; search?: string; jump?: TimeJump }) => {
+    async (params?: { signal?: string; sort?: string; order?: string; search?: string; jump?: TimeJump; sector?: string }) => {
       setLoading(true);
       try {
         const j = params?.jump ?? timeJump;
@@ -40,6 +50,7 @@ export default function StockGrid({ assetType, timeJump, onTimeJumpChange, onSel
           offset: 0,
           asset_type: assetType,
           as_of_date: getAsOfDate(j),
+          sector: params?.sector ?? sector,
         });
         setRowData(result.data);
         setTotal(result.total);
@@ -49,12 +60,13 @@ export default function StockGrid({ assetType, timeJump, onTimeJumpChange, onSel
         setLoading(false);
       }
     },
-    [filter, sortCol, sortDir, search, assetType, timeJump]
+    [filter, sortCol, sortDir, search, assetType, timeJump, sector]
   );
 
   useEffect(() => {
     setSearch("");
     setFilter("ALL");
+    setSector("ALL");
   }, [assetType]);
 
   useEffect(() => {
@@ -106,7 +118,10 @@ export default function StockGrid({ assetType, timeJump, onTimeJumpChange, onSel
       },
       { field: "name", headerName: "NAME", width: 180, cellClass: "text-cyber-muted" },
       ...(assetType === "stock"
-        ? [{ field: "exchange" as const, headerName: "EXCH", width: 80, cellClass: "text-cyber-muted text-center" }]
+        ? [
+            { field: "exchange" as const, headerName: "EXCH", width: 80, cellClass: "text-cyber-muted text-center" },
+            { field: "sector" as const, headerName: "SECTOR", width: 130, cellClass: "text-cyber-muted text-[11px]" },
+          ]
         : []),
       {
         field: "price",
@@ -239,7 +254,7 @@ export default function StockGrid({ assetType, timeJump, onTimeJumpChange, onSel
           </div>
         )}
 
-        <div className="flex gap-1 ml-auto">
+        <div className="flex gap-1">
           {["ALL", "BUY", "SELL", "HOLD"].map((f) => (
             <button
               key={f}
@@ -276,6 +291,30 @@ export default function StockGrid({ assetType, timeJump, onTimeJumpChange, onSel
           {total.toLocaleString()} results
         </div>
       </div>
+
+      {assetType === "stock" && sectors.length > 0 && (
+        <div className="flex items-center gap-2 mb-3 overflow-x-auto pb-1">
+          <div className="text-[10px] text-cyber-muted uppercase tracking-wider whitespace-nowrap">SECTOR:</div>
+          <div className="flex gap-1 flex-nowrap">
+            {["ALL", ...sectors].map((s) => (
+              <button
+                key={s}
+                onClick={() => {
+                  setSector(s);
+                  loadData({ sector: s });
+                }}
+                className={`px-2.5 py-1 text-[10px] font-bold rounded whitespace-nowrap transition-all ${
+                  sector === s
+                    ? "bg-cyber-green/20 text-cyber-green border border-cyber-green/50"
+                    : "bg-cyber-panel text-cyber-muted border border-cyber-border hover:border-cyber-muted hover:text-cyber-text"
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="ag-theme-alpine-dark panel" style={{ height: "600px", width: "100%" }}>
         <AgGridReact

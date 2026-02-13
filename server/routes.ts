@@ -26,7 +26,7 @@ function getAssetTypeFilter(assetType: string | undefined): string {
   return "stock";
 }
 
-async function computeSignalsAsOfDate(assetFilter: string, asOfDate: string, signalFilter?: string, searchFilter?: string, sortCol?: string, sortOrder?: string, lim?: number, off?: number) {
+async function computeSignalsAsOfDate(assetFilter: string, asOfDate: string, signalFilter?: string, searchFilter?: string, sortCol?: string, sortOrder?: string, lim?: number, off?: number, sectorFilter?: string) {
   const symbolsResult = await pool.query(
     `SELECT DISTINCT ph.symbol, s.name, s.exchange, s.sector
      FROM price_history ph
@@ -72,6 +72,7 @@ async function computeSignalsAsOfDate(assetFilter: string, asOfDate: string, sig
     if (signalFilter && signalFilter !== "ALL" && signal !== signalFilter) continue;
     if (searchFilter && !sym.toLowerCase().includes(searchFilter.toLowerCase()) &&
         !(row.name || "").toLowerCase().includes(searchFilter.toLowerCase())) continue;
+    if (sectorFilter && sectorFilter !== "ALL" && (row.sector || "") !== sectorFilter) continue;
 
     allResults.push({
       symbol: sym,
@@ -107,9 +108,23 @@ async function computeSignalsAsOfDate(assetFilter: string, asOfDate: string, sig
   return { data: sliced, total };
 }
 
+router.get("/api/sectors", async (req, res) => {
+  try {
+    const assetFilter = getAssetTypeFilter(req.query.asset_type as string);
+    const result = await pool.query(
+      `SELECT DISTINCT sector FROM stocks WHERE asset_type = $1 AND sector IS NOT NULL AND sector != '' ORDER BY sector`,
+      [assetFilter]
+    );
+    res.json(result.rows.map(r => r.sector));
+  } catch (err) {
+    console.error("Error fetching sectors:", err);
+    res.status(500).json({ error: "Failed to fetch sectors" });
+  }
+});
+
 router.get("/api/stocks", async (req, res) => {
   try {
-    const { signal, sort, order, search, limit, offset, asset_type, as_of_date } = req.query;
+    const { signal, sort, order, search, limit, offset, asset_type, as_of_date, sector } = req.query;
     const assetFilter = getAssetTypeFilter(asset_type as string);
     const lim = Math.min(parseInt(limit as string) || 100, 500);
     const off = parseInt(offset as string) || 0;
@@ -123,7 +138,8 @@ router.get("/api/stocks", async (req, res) => {
         sort as string,
         order as string,
         lim,
-        off
+        off,
+        sector as string
       );
       return res.json(result);
     }
@@ -143,6 +159,11 @@ router.get("/api/stocks", async (req, res) => {
       paramIdx++;
     }
 
+    if (sector && sector !== "ALL") {
+      query += ` AND sector = $${paramIdx++}`;
+      params.push(sector);
+    }
+
     const sortCol = (sort as string) || "change_percent";
     const sortOrder = (order as string) === "asc" ? "ASC" : "DESC";
     const validCols = ["symbol", "name", "price", "change_percent", "signal", "rsi", "macd_histogram", "signal_strength", "volume", "macd_histogram_adjusted"];
@@ -157,13 +178,17 @@ router.get("/api/stocks", async (req, res) => {
     let countQuery = `SELECT COUNT(*) as total FROM computed_signals WHERE asset_type = $1`;
     const countParams: any[] = [assetFilter];
     if (signal && signal !== "ALL") {
-      countQuery += ` AND signal = $2`;
+      countQuery += ` AND signal = $${countParams.length + 1}`;
       countParams.push(signal);
     }
     if (search) {
       const searchIdx = countParams.length + 1;
       countQuery += ` AND (symbol ILIKE $${searchIdx} OR name ILIKE $${searchIdx})`;
       countParams.push(`%${search}%`);
+    }
+    if (sector && sector !== "ALL") {
+      countQuery += ` AND sector = $${countParams.length + 1}`;
+      countParams.push(sector);
     }
     const countResult = await pool.query(countQuery, countParams);
 

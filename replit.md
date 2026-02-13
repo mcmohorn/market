@@ -83,6 +83,13 @@ Seed data: `npx tsx server/seed.ts` (requires API keys + optionally BigQuery cre
 - Time navigation buttons to view historical data (back 1 day, 1 week, 1 month, etc.)
 
 ## Recent Changes
+- 2026-02-13: Added sector filter for stocks
+  - Sector backfill script classifies 4374 stocks into sectors (Technology, Healthcare, Energy, etc.)
+  - GET /api/sectors endpoint returns available sectors
+  - GET /api/stocks supports `sector` query parameter for filtering
+  - Sector filter bar in Market Scanner (stocks only) with clickable sector pills
+  - SECTOR column added to grid for stocks
+  - Sectors: Technology, Healthcare, Financial Services, Energy, Consumer Discretionary, Consumer Staples, Industrials, Real Estate, Communication Services, Materials, Utilities, ETF/Fund, SPAC, Other
 - 2026-02-13: Added crypto/stocks toggle and time navigation
   - Header has Stocks/Crypto toggle button next to LIVE indicator
   - All API endpoints filter by asset_type (stock vs crypto)
