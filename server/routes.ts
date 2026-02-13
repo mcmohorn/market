@@ -1,7 +1,23 @@
 import { Router } from "express";
 import { pool } from "./db";
-import type { StockBar } from "../shared/types";
+import type { StockBar, SimulationRequest, CompareRequest, MarketConditionsRequest, DEFAULT_STRATEGY } from "../shared/types";
 import { analyzeStock, getSignal, getSignalStrength, countSignalChanges, lastSignalChangeDate } from "../shared/indicators";
+import { runSimulation, compareStrategies, analyzeMarketConditions } from "./simulation";
+
+const defaultStrategy = {
+  macdFastPeriod: 12,
+  macdSlowPeriod: 26,
+  macdSignalPeriod: 9,
+  rsiPeriod: 12,
+  rsiOverbought: 70,
+  rsiOversold: 30,
+  minBuySignal: 4,
+  maxSharePrice: 500,
+  minCashReserve: 100,
+  maxPositionPct: 25,
+  stopLossPct: 10,
+  takeProfitPct: 20,
+};
 
 const router = Router();
 
@@ -179,6 +195,110 @@ router.get("/api/stats", async (req, res) => {
   } catch (err) {
     console.error("Error fetching stats:", err);
     res.status(500).json({ error: "Failed to fetch stats" });
+  }
+});
+
+router.get("/api/symbols", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT DISTINCT symbol FROM price_history ORDER BY symbol`
+    );
+    res.json(result.rows.map(r => r.symbol));
+  } catch (err) {
+    console.error("Error fetching symbols:", err);
+    res.status(500).json({ error: "Failed to fetch symbols" });
+  }
+});
+
+router.get("/api/data-range", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT MIN(date) as min_date, MAX(date) as max_date, COUNT(DISTINCT symbol) as symbol_count, COUNT(*) as total_bars FROM price_history`
+    );
+    const row = result.rows[0];
+    res.json({
+      minDate: row.min_date ? row.min_date.toISOString().split("T")[0] : null,
+      maxDate: row.max_date ? row.max_date.toISOString().split("T")[0] : null,
+      symbolCount: parseInt(row.symbol_count),
+      totalBars: parseInt(row.total_bars),
+    });
+  } catch (err) {
+    console.error("Error fetching data range:", err);
+    res.status(500).json({ error: "Failed to fetch data range" });
+  }
+});
+
+router.post("/api/simulation/run", async (req, res) => {
+  try {
+    const body: SimulationRequest = req.body;
+
+    if (!body.startDate) {
+      return res.status(400).json({ error: "startDate is required" });
+    }
+
+    const endDate = body.endDate || new Date().toISOString().split("T")[0];
+    const initialCapital = body.initialCapital || 10000;
+    const params = { ...defaultStrategy, ...body.strategy };
+
+    const result = await runSimulation(
+      body.startDate,
+      endDate,
+      initialCapital,
+      params,
+      body.symbols
+    );
+
+    res.json(result);
+  } catch (err: any) {
+    console.error("Simulation error:", err);
+    res.status(500).json({ error: err.message || "Simulation failed" });
+  }
+});
+
+router.post("/api/simulation/compare", async (req, res) => {
+  try {
+    const body: CompareRequest = req.body;
+
+    const strategies = body.strategies.map(s => ({
+      name: s.name,
+      params: { ...defaultStrategy, ...s.params },
+    }));
+
+    const result = await compareStrategies(
+      strategies,
+      body.periods || [5, 10, 20],
+      body.initialCapital || 10000,
+      body.iterations || 10,
+      body.symbols
+    );
+
+    res.json(result);
+  } catch (err: any) {
+    console.error("Compare error:", err);
+    res.status(500).json({ error: err.message || "Comparison failed" });
+  }
+});
+
+router.post("/api/simulation/market-conditions", async (req, res) => {
+  try {
+    const body: MarketConditionsRequest = req.body;
+
+    const strategies = body.strategies.map(s => ({
+      name: s.name,
+      params: { ...defaultStrategy, ...s.params },
+    }));
+
+    const result = await analyzeMarketConditions(
+      strategies,
+      body.initialCapital || 10000,
+      body.benchmark || "SPY",
+      body.symbols
+    );
+
+    res.json(result);
+  } catch (err: any) {
+    console.error("Market conditions error:", err);
+    res.status(500).json({ error: err.message || "Market conditions analysis failed" });
   }
 });
 
