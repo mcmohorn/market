@@ -11,7 +11,7 @@ import type {
   DEFAULT_STRATEGY,
 } from "../shared/types";
 
-function computeMACD(bars: StockBar[], params: StrategyParams): IndicatorData[] {
+function computeIndicators(bars: StockBar[], params: StrategyParams): IndicatorData[] {
   const m1 = params.macdFastPeriod;
   const m2 = params.macdSlowPeriod;
   const m3 = params.macdSignalPeriod;
@@ -19,13 +19,9 @@ function computeMACD(bars: StockBar[], params: StrategyParams): IndicatorData[] 
   const a2 = 2.0 / (m2 + 1.0);
   const a3 = 2.0 / (m3 + 1.0);
   const minDataPoints = 10;
+  const rsiPeriod = params.rsiPeriod;
 
   const results: IndicatorData[] = [];
-
-  let totalGains = 0;
-  let totalLosses = 0;
-  let prevSmmad = 0;
-  let prevSmmau = 0;
 
   for (let i = 0; i < bars.length; i++) {
     const bar = bars[i];
@@ -35,7 +31,8 @@ function computeMACD(bars: StockBar[], params: StrategyParams): IndicatorData[] 
         emaFast: bar.close, emaSlow: bar.close,
         macdFast: 0, macdSlow: 0,
         macdHistogram: 0, macdHistogramAdjusted: 0,
-        buySignal: false, rsi: 0,
+        buySignal: false, rsi: 50,
+        adx: 0, ma50: bar.close, bollingerBandwidth: 0,
         price: bar.close, date: bar.date,
       });
       continue;
@@ -54,46 +51,36 @@ function computeMACD(bars: StockBar[], params: StrategyParams): IndicatorData[] 
       buySignal = macdFast > macdSlow;
     }
 
-    const closeNow = bar.close;
-    const closePrev = bars[i - 1].close;
-    let U = 0, D = 0;
-    if (closeNow > closePrev) U = closeNow - closePrev;
-    else if (closeNow < closePrev) D = closePrev - closeNow;
-
-    totalGains += U;
-    totalLosses += D;
-
-    let rsi = 0;
-    const rsiPeriod = params.rsiPeriod;
-    const alpha = 1.0 / rsiPeriod;
-
-    if (i < rsiPeriod) {
-      const smmad = totalLosses / i;
-      const smmau = totalGains / i;
-      prevSmmad = smmad;
-      prevSmmau = smmau;
-      if (smmad === 0) rsi = 100;
-      else {
-        const rs = smmau / smmad;
-        rsi = 100 - 100 / (1 + rs);
-      }
-    } else {
-      const smmad = alpha * D + (1 - alpha) * prevSmmad;
-      const smmau = alpha * U + (1 - alpha) * prevSmmau;
-      prevSmmad = smmad;
-      prevSmmau = smmau;
-      if (smmad === 0) rsi = 100;
-      else {
-        const rs = smmau / smmad;
-        rsi = 100 - 100 / (1 + rs);
-      }
-    }
-
     results.push({
       emaFast, emaSlow, macdFast, macdSlow,
       macdHistogram: diff, macdHistogramAdjusted: diffAdjusted,
-      buySignal, rsi, price: bar.close, date: bar.date,
+      buySignal, rsi: 50,
+      adx: 0, ma50: bar.close, bollingerBandwidth: 0,
+      price: bar.close, date: bar.date,
     });
+  }
+
+  if (bars.length >= rsiPeriod + 1) {
+    let avgGain = 0;
+    let avgLoss = 0;
+    for (let i = 1; i <= rsiPeriod; i++) {
+      const change = bars[i].close - bars[i - 1].close;
+      if (change > 0) avgGain += change;
+      else avgLoss += Math.abs(change);
+    }
+    avgGain /= rsiPeriod;
+    avgLoss /= rsiPeriod;
+
+    results[rsiPeriod].rsi = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+
+    for (let i = rsiPeriod + 1; i < bars.length; i++) {
+      const change = bars[i].close - bars[i - 1].close;
+      const gain = change > 0 ? change : 0;
+      const loss = change < 0 ? Math.abs(change) : 0;
+      avgGain = (avgGain * (rsiPeriod - 1) + gain) / rsiPeriod;
+      avgLoss = (avgLoss * (rsiPeriod - 1) + loss) / rsiPeriod;
+      results[i].rsi = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+    }
   }
 
   return results;
@@ -162,7 +149,7 @@ export async function runSimulation(
   }
 
   for (const sd of allData) {
-    sd.indicators = computeMACD(sd.bars, params);
+    sd.indicators = computeIndicators(sd.bars, params);
   }
 
   const allDates = new Set<string>();

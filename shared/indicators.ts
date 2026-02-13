@@ -23,7 +23,10 @@ export function calculateMACD(bars: StockBar[]): IndicatorData[] {
         macdHistogram: 0,
         macdHistogramAdjusted: 0,
         buySignal: false,
-        rsi: 0,
+        rsi: 50,
+        adx: 0,
+        ma50: bar.close,
+        bollingerBandwidth: 0,
         price: bar.close,
         date: bar.date,
       });
@@ -49,7 +52,10 @@ export function calculateMACD(bars: StockBar[]): IndicatorData[] {
         macdHistogram: diff,
         macdHistogramAdjusted: diffAdjusted,
         buySignal,
-        rsi: 0,
+        rsi: 50,
+        adx: 0,
+        ma50: bar.close,
+        bollingerBandwidth: 0,
         price: bar.close,
         date: bar.date,
       });
@@ -60,61 +66,129 @@ export function calculateMACD(bars: StockBar[]): IndicatorData[] {
 }
 
 export function calculateRSI(indicators: IndicatorData[], bars: StockBar[]): IndicatorData[] {
-  const period = 12.0;
-  const alpha = 1.0 / period;
-  let totalGains = 0;
-  let totalLosses = 0;
+  const period = 14;
+
+  if (bars.length < period + 1) return indicators;
+
+  let avgGain = 0;
+  let avgLoss = 0;
+
+  for (let i = 1; i <= period; i++) {
+    const change = bars[i].close - bars[i - 1].close;
+    if (change > 0) avgGain += change;
+    else avgLoss += Math.abs(change);
+  }
+  avgGain /= period;
+  avgLoss /= period;
+
+  if (avgLoss === 0) {
+    indicators[period].rsi = 100;
+  } else {
+    const rs = avgGain / avgLoss;
+    indicators[period].rsi = 100 - 100 / (1 + rs);
+  }
+
+  for (let i = period + 1; i < bars.length; i++) {
+    const change = bars[i].close - bars[i - 1].close;
+    const gain = change > 0 ? change : 0;
+    const loss = change < 0 ? Math.abs(change) : 0;
+
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+
+    if (avgLoss === 0) {
+      indicators[i].rsi = 100;
+    } else {
+      const rs = avgGain / avgLoss;
+      indicators[i].rsi = 100 - 100 / (1 + rs);
+    }
+  }
+
+  return indicators;
+}
+
+export function calculateADX(indicators: IndicatorData[], bars: StockBar[]): IndicatorData[] {
+  const period = 14;
+
+  if (bars.length < period * 2 + 1) return indicators;
+
+  const trueRanges: number[] = [0];
+  const plusDMs: number[] = [0];
+  const minusDMs: number[] = [0];
+
+  for (let i = 1; i < bars.length; i++) {
+    const high = bars[i].high;
+    const low = bars[i].low;
+    const prevClose = bars[i - 1].close;
+    const prevHigh = bars[i - 1].high;
+    const prevLow = bars[i - 1].low;
+
+    const tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
+    trueRanges.push(tr);
+
+    const upMove = high - prevHigh;
+    const downMove = prevLow - low;
+
+    plusDMs.push(upMove > downMove && upMove > 0 ? upMove : 0);
+    minusDMs.push(downMove > upMove && downMove > 0 ? downMove : 0);
+  }
+
+  let smoothTR = 0;
+  let smoothPlusDM = 0;
+  let smoothMinusDM = 0;
+  for (let i = 1; i <= period; i++) {
+    smoothTR += trueRanges[i];
+    smoothPlusDM += plusDMs[i];
+    smoothMinusDM += minusDMs[i];
+  }
+
+  const dxValues: number[] = [];
+
+  const computeDX = (sTR: number, sPDM: number, sMDM: number): number => {
+    const plusDI = sTR > 0 ? (sPDM / sTR) * 100 : 0;
+    const minusDI = sTR > 0 ? (sMDM / sTR) * 100 : 0;
+    const diSum = plusDI + minusDI;
+    return diSum > 0 ? (Math.abs(plusDI - minusDI) / diSum) * 100 : 0;
+  };
+
+  dxValues.push(computeDX(smoothTR, smoothPlusDM, smoothMinusDM));
+
+  for (let i = period + 1; i < bars.length; i++) {
+    smoothTR = smoothTR - smoothTR / period + trueRanges[i];
+    smoothPlusDM = smoothPlusDM - smoothPlusDM / period + plusDMs[i];
+    smoothMinusDM = smoothMinusDM - smoothMinusDM / period + minusDMs[i];
+
+    dxValues.push(computeDX(smoothTR, smoothPlusDM, smoothMinusDM));
+
+    if (dxValues.length === period) {
+      const adx = dxValues.reduce((s, v) => s + v, 0) / period;
+      indicators[i].adx = adx;
+    } else if (dxValues.length > period) {
+      const prevADX = indicators[i - 1].adx;
+      indicators[i].adx = (prevADX * (period - 1) + dxValues[dxValues.length - 1]) / period;
+    }
+  }
+
+  return indicators;
+}
+
+export function calculateMA50AndBollinger(indicators: IndicatorData[], bars: StockBar[]): IndicatorData[] {
+  const maPeriod = 50;
+  const bbPeriod = 20;
 
   for (let i = 0; i < bars.length; i++) {
-    if (i === 0) {
-      indicators[i].rsi = 0;
-      continue;
-    }
+    const maStart = Math.max(0, i - maPeriod + 1);
+    const maSlice = bars.slice(maStart, i + 1);
+    indicators[i].ma50 = maSlice.reduce((s, b) => s + b.close, 0) / maSlice.length;
 
-    const closeNow = bars[i].close;
-    const closePrev = bars[i - 1].close;
-    let U = 0;
-    let D = 0;
-
-    if (closeNow > closePrev) {
-      U = closeNow - closePrev;
-    } else if (closeNow < closePrev) {
-      D = closePrev - closeNow;
-    }
-
-    totalGains += U;
-    totalLosses += D;
-
-    if (i < 14) {
-      const smmad = totalLosses / i;
-      const smmau = totalGains / i;
-      if (smmad === 0) {
-        indicators[i].rsi = 100;
-      } else {
-        const rs = smmau / smmad;
-        indicators[i].rsi = 100 - 100 / (1 + rs);
-      }
-    } else {
-      const prevSmmad = i > 1 ? (indicators[i - 1] as any)._smmad || 0 : 0;
-      const prevSmmau = i > 1 ? (indicators[i - 1] as any)._smmau || 0 : 0;
-      const smmad = alpha * D + (1 - alpha) * prevSmmad;
-      const smmau = alpha * U + (1 - alpha) * prevSmmau;
-
-      (indicators[i] as any)._smmad = smmad;
-      (indicators[i] as any)._smmau = smmau;
-
-      if (smmad === 0) {
-        indicators[i].rsi = 100;
-      } else {
-        const rs = smmau / smmad;
-        indicators[i].rsi = 100 - 100 / (1 + rs);
-      }
-    }
-
-    if (i < 14) {
-      (indicators[i] as any)._smmad = totalLosses / i;
-      (indicators[i] as any)._smmau = totalGains / i;
-    }
+    const bbStart = Math.max(0, i - bbPeriod + 1);
+    const bbSlice = bars.slice(bbStart, i + 1);
+    const bbMean = bbSlice.reduce((s, b) => s + b.close, 0) / bbSlice.length;
+    const variance = bbSlice.reduce((s, b) => s + Math.pow(b.close - bbMean, 2), 0) / bbSlice.length;
+    const stdDev = Math.sqrt(variance);
+    const upperBand = bbMean + 2 * stdDev;
+    const lowerBand = bbMean - 2 * stdDev;
+    indicators[i].bollingerBandwidth = bbMean > 0 ? ((upperBand - lowerBand) / bbMean) * 100 : 0;
   }
 
   return indicators;
@@ -124,12 +198,34 @@ export function analyzeStock(bars: StockBar[]): IndicatorData[] {
   if (bars.length < 2) return [];
   let indicators = calculateMACD(bars);
   indicators = calculateRSI(indicators, bars);
+  indicators = calculateADX(indicators, bars);
+  indicators = calculateMA50AndBollinger(indicators, bars);
   return indicators;
 }
 
 export function getSignal(indicators: IndicatorData[]): "BUY" | "SELL" | "HOLD" {
   if (indicators.length === 0) return "HOLD";
   const last = indicators[indicators.length - 1];
+
+  const rsiNeutral = last.rsi >= 45 && last.rsi <= 55;
+  const macdHistNearZero = last.price > 0 && Math.abs(last.macdHistogram) < 0.001 * last.price;
+  const priceNearMA50 = last.ma50 > 0 && Math.abs(last.price - last.ma50) / last.ma50 <= 0.02;
+  const weakTrend = last.adx > 0 ? last.adx < 20 : false;
+
+  let noRecentCrossover = true;
+  const lookback = Math.min(5, indicators.length - 1);
+  for (let j = indicators.length - lookback; j < indicators.length; j++) {
+    if (j > 0 && indicators[j].buySignal !== indicators[j - 1].buySignal) {
+      noRecentCrossover = false;
+      break;
+    }
+  }
+
+  const holdConditionsMet = [rsiNeutral, macdHistNearZero, noRecentCrossover, priceNearMA50, weakTrend]
+    .filter(Boolean).length;
+
+  if (holdConditionsMet >= 4) return "HOLD";
+
   if (last.rsi > 70 && !last.buySignal) return "SELL";
   if (last.rsi < 30 && last.buySignal) return "BUY";
   if (last.buySignal) return "BUY";

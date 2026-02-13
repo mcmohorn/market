@@ -16,6 +16,9 @@ export interface IndicatorData {
   macdHistogramAdjusted: number;
   buySignal: boolean;
   rsi: number;
+  adx: number;
+  ma50: number;
+  bollingerBandwidth: number;
   price: number;
   date: string;
 }
