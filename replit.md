@@ -83,6 +83,12 @@ Seed data: `npx tsx server/seed.ts` (requires API keys + optionally BigQuery cre
 - Time navigation buttons to view historical data (back 1 day, 1 week, 1 month, etc.)
 
 ## Recent Changes
+- 2026-02-13: Added HOLD signal with combined multi-indicator rule-set
+  - New indicators: ADX (14-period Welles Wilder), 50-period MA, Bollinger Bandwidth (20-period)
+  - HOLD triggers when 4 of 5 conditions met: RSI 45-55, MACD histogram <0.1% of price, no crossover in 5 bars, price within 2% of MA50, ADX <20
+  - IndicatorData type extended with adx, ma50, bollingerBandwidth fields
+  - RSI standardized to Wilder smoothing across both shared indicators and simulation engine
+  - HOLD appears in scanner grid (yellow), stats bar, and historical recomputation
 - 2026-02-13: Added portfolio symbol picker to Simulation Lab
   - SymbolPicker component with search/type-ahead, selected chips, and clear all
   - Optional multi-select — leave empty to trade all symbols, or pick specific ones
