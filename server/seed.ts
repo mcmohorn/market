@@ -41,13 +41,14 @@ async function fetchAlpacaAssets(): Promise<AlpacaAsset[]> {
 
 async function fetchAlpacaBars(symbols: string[], startDate: string, endDate: string): Promise<Record<string, StockBar[]>> {
   const results: Record<string, StockBar[]> = {};
-  const batchSize = 50;
+  const batchSize = 20;
 
   for (let i = 0; i < symbols.length; i += batchSize) {
     const batch = symbols.slice(i, i + batchSize);
     const symbolsParam = batch.join(",");
 
     let pageToken: string | null = null;
+    let pages = 0;
     do {
       const url = new URL(`${ALPACA_DATA_URL}/stocks/bars`);
       url.searchParams.set("symbols", symbolsParam);
@@ -91,12 +92,13 @@ async function fetchAlpacaBars(symbols: string[], startDate: string, endDate: st
       }
 
       pageToken = data.next_page_token || null;
+      pages++;
     } while (pageToken);
 
-    if (i % 200 === 0 && i > 0) {
+    if ((i / batchSize) % 10 === 0 && i > 0) {
       console.log(`  Fetched bars for ${i}/${symbols.length} symbols...`);
-      await sleep(500);
     }
+    await sleep(200);
   }
 
   return results;
@@ -117,7 +119,7 @@ async function fetchTiingoCrypto(): Promise<Record<string, StockBar[]>> {
 
   const results: Record<string, StockBar[]> = {};
   const endDate = new Date().toISOString().split("T")[0];
-  const startDate = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const startDate = "2016-01-01";
 
   for (const sym of cryptoSymbols) {
     try {
@@ -363,8 +365,10 @@ async function main() {
   }
 
   const endDate = new Date().toISOString().split("T")[0];
-  const startDate = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-  console.log(`Date range: ${startDate} to ${endDate}`);
+  const stockStartDate = "2016-01-01";
+  const cryptoStartDate = "2016-01-01";
+  console.log(`Stock date range: ${stockStartDate} to ${endDate}`);
+  console.log(`Crypto date range: ${cryptoStartDate} to ${endDate}`);
 
   if (ALPACA_KEY && ALPACA_SECRET) {
     const assets = await fetchAlpacaAssets();
@@ -373,24 +377,29 @@ async function main() {
     const assetMeta = new Map(assets.map(a => [a.symbol, { name: a.name, exchange: a.exchange }]));
     const allSymbols = assets.map(a => a.symbol);
 
-    const chunkSize = 200;
+    const chunkSize = 100;
+    let totalStored = 0;
     for (let i = 0; i < allSymbols.length; i += chunkSize) {
       const chunk = allSymbols.slice(i, i + chunkSize);
-      console.log(`Fetching bars for chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(allSymbols.length / chunkSize)} (${chunk.length} symbols)...`);
-      const bars = await fetchAlpacaBars(chunk, startDate, endDate);
+      const chunkNum = Math.floor(i / chunkSize) + 1;
+      const totalChunks = Math.ceil(allSymbols.length / chunkSize);
+      console.log(`Fetching bars for chunk ${chunkNum}/${totalChunks} (${chunk.length} symbols)...`);
+      const bars = await fetchAlpacaBars(chunk, stockStartDate, endDate);
+      const barCount = Object.values(bars).reduce((s, b) => s + b.length, 0);
       await storePriceDataPostgres(bars, "stock", assetMeta);
-      console.log(`  Stored ${Object.keys(bars).length} symbols to PostgreSQL`);
+      totalStored += Object.keys(bars).length;
+      console.log(`  Stored ${Object.keys(bars).length} symbols (${barCount} bars) to PostgreSQL [total: ${totalStored}]`);
 
       if (bigqueryReady) {
         try {
           await storePriceDataBigQuery(bars, STOCKS_DATASET, assetMeta);
-          console.log(`  Stored ${Object.keys(bars).length} symbols to BigQuery`);
         } catch (err: any) {
           console.warn(`  BigQuery write warning: ${err.message}`);
         }
       }
 
-      await sleep(1000);
+      if (global.gc) global.gc();
+      await sleep(500);
     }
   } else {
     console.log("No Alpaca API keys configured - skipping stock data");
