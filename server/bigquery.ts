@@ -145,10 +145,24 @@ export async function queryBigQuery(sql: string, params?: any): Promise<any[]> {
 
 export async function clearTable(dataset: string, table: string) {
   const bq = getBigQueryClient();
-  await bq.query({
-    query: `DELETE FROM \`${PROJECT_ID}.${dataset}.${table}\` WHERE TRUE`,
-    location: BQ_LOCATION,
-  });
+  const tableRef = bq.dataset(dataset).table(table);
+  const [exists] = await tableRef.exists();
+  if (exists) {
+    await tableRef.delete();
+  }
+}
+
+export async function dropAndRecreateTables() {
+  for (const ds of [STOCKS_DATASET, CRYPTO_DATASET]) {
+    await clearTable(ds, "price_history");
+    await clearTable(ds, "metadata");
+    await clearTable(ds, "computed_signals");
+  }
+
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  await ensureBigQueryTables();
+  console.log("BigQuery tables recreated");
 }
 
 export { PROJECT_ID, STOCKS_DATASET, CRYPTO_DATASET };

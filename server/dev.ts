@@ -12,7 +12,7 @@ app.use(routes);
 
 async function start() {
   await initDB();
-  app.listen(PORT, "localhost", () => {
+  app.listen(PORT, "127.0.0.1", () => {
     console.log(`API server running on port ${PORT}`);
   });
 }

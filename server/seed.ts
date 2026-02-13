@@ -1,5 +1,5 @@
 import { pool, initDB } from "./db";
-import { ensureBigQueryTables, insertRows, clearTable, getBigQueryClient, PROJECT_ID, STOCKS_DATASET, CRYPTO_DATASET } from "./bigquery";
+import { ensureBigQueryTables, insertRows, clearTable, dropAndRecreateTables, getBigQueryClient, PROJECT_ID, STOCKS_DATASET, CRYPTO_DATASET } from "./bigquery";
 import { analyzeStock, getSignal, getSignalStrength, countSignalChanges, lastSignalChangeDate } from "../shared/indicators";
 import type { StockBar } from "../shared/types";
 
@@ -56,6 +56,7 @@ async function fetchAlpacaBars(symbols: string[], startDate: string, endDate: st
       url.searchParams.set("end", endDate);
       url.searchParams.set("limit", "10000");
       url.searchParams.set("adjustment", "split");
+      url.searchParams.set("feed", "iex");
       if (pageToken) url.searchParams.set("page_token", pageToken);
 
       const res = await fetch(url.toString(), {
@@ -351,15 +352,9 @@ async function main() {
   if (USE_BIGQUERY) {
     console.log("Initializing BigQuery tables...");
     try {
-      await ensureBigQueryTables();
-      console.log("Clearing existing BigQuery data for fresh seed...");
-      await clearTable(STOCKS_DATASET, "price_history");
-      await clearTable(STOCKS_DATASET, "metadata");
-      await clearTable(STOCKS_DATASET, "computed_signals");
-      await clearTable(CRYPTO_DATASET, "price_history");
-      await clearTable(CRYPTO_DATASET, "metadata");
-      await clearTable(CRYPTO_DATASET, "computed_signals");
-      console.log("BigQuery tables cleared");
+      console.log("Dropping and recreating BigQuery tables for fresh seed...");
+      await dropAndRecreateTables();
+      console.log("BigQuery tables ready");
       bigqueryReady = true;
     } catch (err: any) {
       console.warn("BigQuery setup warning:", err.message);
