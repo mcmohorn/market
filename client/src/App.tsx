@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import Header from "./components/Header";
 import type { AssetType } from "./components/Header";
+import SignalAlerts from "./components/SignalAlerts";
 import TopPerformers from "./components/TopPerformers";
 import StockGrid from "./components/StockGrid";
 import StockDetailModal from "./components/StockDetailModal";
@@ -68,6 +69,7 @@ export default function App() {
         {view === "scanner" && (
           <>
             <StatsBar assetType={assetType} asOfDate={asOfDate} />
+            <SignalAlerts assetType={assetType} onSelectSymbol={setSelectedSymbol} />
             <TopPerformers assetType={assetType} asOfDate={asOfDate} onSelectSymbol={setSelectedSymbol} />
             <StockGrid assetType={assetType} timeJump={timeJump} onTimeJumpChange={setTimeJump} onSelectSymbol={setSelectedSymbol} />
           </>

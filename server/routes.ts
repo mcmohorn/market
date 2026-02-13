@@ -108,6 +108,59 @@ async function computeSignalsAsOfDate(assetFilter: string, asOfDate: string, sig
   return { data: sliced, total };
 }
 
+router.get("/api/stocks/signal-alerts", async (req, res) => {
+  try {
+    const assetFilter = getAssetTypeFilter(req.query.asset_type as string);
+
+    const result = await pool.query(
+      `SELECT symbol, name, exchange, sector, signal, price, change_percent,
+              last_signal_change, signal_changes, data_points
+       FROM computed_signals
+       WHERE asset_type = $1
+         AND last_signal_change IS NOT NULL
+         AND last_signal_change != ''
+         AND signal_changes > 0
+         AND data_points >= 60
+       ORDER BY last_signal_change DESC
+       LIMIT 200`,
+      [assetFilter]
+    );
+
+    const now = new Date();
+    const alerts = result.rows
+      .map((row: any) => {
+        const lastChangeDate = new Date(row.last_signal_change);
+        const daysSinceChange = Math.max(1, Math.floor((now.getTime() - lastChangeDate.getTime()) / (1000 * 60 * 60 * 24)));
+        const avgDaysBetweenChanges = row.data_points / row.signal_changes;
+        const alertScore = avgDaysBetweenChanges / daysSinceChange;
+
+        return {
+          symbol: row.symbol,
+          name: row.name,
+          exchange: row.exchange,
+          sector: row.sector,
+          signal: row.signal,
+          price: row.price,
+          changePercent: row.change_percent,
+          lastSignalChange: row.last_signal_change,
+          daysSinceChange,
+          signalChanges: row.signal_changes,
+          dataPoints: row.data_points,
+          avgDaysBetweenChanges: Math.round(avgDaysBetweenChanges * 10) / 10,
+          alertScore: Math.round(alertScore * 100) / 100,
+        };
+      })
+      .filter((a: any) => a.daysSinceChange <= 14)
+      .sort((a: any, b: any) => b.alertScore - a.alertScore)
+      .slice(0, 20);
+
+    res.json(alerts);
+  } catch (err) {
+    console.error("Error fetching signal alerts:", err);
+    res.status(500).json({ error: "Failed to fetch signal alerts" });
+  }
+});
+
 router.get("/api/sectors", async (req, res) => {
   try {
     const assetFilter = getAssetTypeFilter(req.query.asset_type as string);

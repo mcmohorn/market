@@ -2,6 +2,30 @@ import type { StockAnalysis, StockDetail, TopPerformer, SimulationResult, Simula
 
 const BASE = "";
 
+export interface SignalAlert {
+  symbol: string;
+  name: string;
+  exchange: string;
+  sector: string;
+  signal: "BUY" | "SELL" | "HOLD";
+  price: number;
+  changePercent: number;
+  lastSignalChange: string;
+  daysSinceChange: number;
+  signalChanges: number;
+  dataPoints: number;
+  avgDaysBetweenChanges: number;
+  alertScore: number;
+}
+
+export async function fetchSignalAlerts(assetType?: string): Promise<SignalAlert[]> {
+  const qs = new URLSearchParams();
+  if (assetType) qs.set("asset_type", assetType);
+  const res = await fetch(`${BASE}/api/stocks/signal-alerts?${qs.toString()}`);
+  if (!res.ok) throw new Error("Failed to fetch signal alerts");
+  return res.json();
+}
+
 export async function fetchSectors(assetType?: string): Promise<string[]> {
   const qs = new URLSearchParams();
   if (assetType) qs.set("asset_type", assetType);

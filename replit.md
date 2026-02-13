@@ -83,6 +83,12 @@ Seed data: `npx tsx server/seed.ts` (requires API keys + optionally BigQuery cre
 - Time navigation buttons to view historical data (back 1 day, 1 week, 1 month, etc.)
 
 ## Recent Changes
+- 2026-02-13: Added Signal Change Alerts section
+  - New /api/stocks/signal-alerts endpoint with alertScore ranking (slow movers ranked higher)
+  - SignalAlerts component above TopPerformers shows recent BUY↔SELL flips
+  - Cards show signal direction, last change date, avg days between flips, total flip count
+  - "RARE" badge on stocks averaging 20+ days between signal changes
+  - Alert score = avgDaysBetweenChanges / daysSinceChange (higher = more notable)
 - 2026-02-13: Added sector filter for stocks
   - Sector backfill script classifies 4374 stocks into sectors (Technology, Healthcare, Energy, etc.)
   - GET /api/sectors endpoint returns available sectors
