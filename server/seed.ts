@@ -172,7 +172,7 @@ async function storePriceDataPostgres(allBars: Record<string, StockBar[]>, asset
 
         for (const bar of batch) {
           batchPlaceholders.push(`($${bpIdx++}, $${bpIdx++}, $${bpIdx++}, $${bpIdx++}, $${bpIdx++}, $${bpIdx++}, $${bpIdx++}, $${bpIdx++})`);
-          batchParams.push(symbol, bar.date, bar.open, bar.high, bar.low, bar.close, bar.volume, assetType);
+          batchParams.push(symbol, bar.date, bar.open, bar.high, bar.low, bar.close, Math.round(bar.volume), assetType);
         }
 
         await client.query(
@@ -212,7 +212,7 @@ async function storePriceDataBigQuery(allBars: Record<string, StockBar[]>, datas
         high: bar.high,
         low: bar.low,
         close: bar.close,
-        volume: bar.volume,
+        volume: Math.round(bar.volume),
       });
     }
   }

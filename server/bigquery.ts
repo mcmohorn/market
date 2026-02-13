@@ -3,6 +3,7 @@ import { BigQuery } from "@google-cloud/bigquery";
 const PROJECT_ID = "market-487302";
 const STOCKS_DATASET = "stocks";
 const CRYPTO_DATASET = "crypto";
+const BQ_LOCATION = "us-central1";
 
 let bqClient: BigQuery | null = null;
 
@@ -43,13 +44,13 @@ export async function ensureBigQueryTables() {
 
   const [stocksExists] = await stocksDataset.exists();
   if (!stocksExists) {
-    await stocksDataset.create({ location: "US" });
+    await stocksDataset.create({ location: BQ_LOCATION });
     console.log(`Created dataset: ${STOCKS_DATASET}`);
   }
 
   const [cryptoExists] = await cryptoDataset.exists();
   if (!cryptoExists) {
-    await cryptoDataset.create({ location: "US" });
+    await cryptoDataset.create({ location: BQ_LOCATION });
     console.log(`Created dataset: ${CRYPTO_DATASET}`);
   }
 
@@ -134,7 +135,7 @@ export async function insertRows(dataset: string, table: string, rows: any[]) {
 
 export async function queryBigQuery(sql: string, params?: any): Promise<any[]> {
   const bq = getBigQueryClient();
-  const options: any = { query: sql, location: "US" };
+  const options: any = { query: sql, location: BQ_LOCATION };
   if (params) {
     options.params = params;
   }
@@ -146,7 +147,7 @@ export async function clearTable(dataset: string, table: string) {
   const bq = getBigQueryClient();
   await bq.query({
     query: `DELETE FROM \`${PROJECT_ID}.${dataset}.${table}\` WHERE TRUE`,
-    location: "US",
+    location: BQ_LOCATION,
   });
 }
 
