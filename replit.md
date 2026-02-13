@@ -11,7 +11,8 @@ A full-stack web application for stock and cryptocurrency market analysis. Uses 
   - `index.ts` - Production server entry point
   - `routes.ts` - All API endpoints (stocks, simulation, comparison, market conditions)
   - `db.ts` - PostgreSQL connection and schema initialization
-  - `seed.ts` - Data seeding script (pulls from Alpaca/Tiingo APIs)
+  - `bigquery.ts` - Google BigQuery connection, table setup, query helpers
+  - `seed.ts` - Data seeding script (pulls from Alpaca/Tiingo, writes to PostgreSQL + BigQuery)
   - `simulation.ts` - Trading simulation engine (backtesting, comparison, market conditions)
 - `client/` - React frontend (Vite, TypeScript)
   - `src/App.tsx` - Main app with navigation (Market Scanner, Simulation Lab)
@@ -29,7 +30,8 @@ A full-stack web application for stock and cryptocurrency market analysis. Uses 
 - **Language**: TypeScript (Node.js)
 - **Frontend**: React 19, Vite, AG Grid Community, Recharts, TailwindCSS
 - **Backend**: Express.js
-- **Database**: PostgreSQL (Replit built-in, Neon-backed)
+- **Database**: PostgreSQL (Replit built-in) + Google BigQuery (GCP project: market-487302)
+- **BigQuery Datasets**: `stocks` (stock data), `crypto` (crypto data)
 - **APIs**: Alpaca (stocks), Tiingo (crypto data)
 - **Analysis**: MACD, RSI technical indicators
 - **Theme**: Dark cyber/hacker aesthetic (black bg, green accents)
@@ -39,6 +41,16 @@ A full-stack web application for stock and cryptocurrency market analysis. Uses 
 - `ALPACA_API_KEY_ID` - Alpaca API key (for data seeding)
 - `ALPACA_API_KEY_SECRET` - Alpaca API secret (for data seeding)
 - `TIINGO_API_TOKEN` - Tiingo API token for crypto data (for data seeding)
+- `GOOGLE_CREDENTIALS_JSON` - GCP service account JSON key (for BigQuery access)
+- `USE_BIGQUERY` - Set to "false" to disable BigQuery writes (default: enabled)
+
+### BigQuery Schema (project: market-487302)
+- `stocks.price_history` - Historical OHLCV data for stocks
+- `stocks.metadata` - Stock metadata (symbol, name, exchange, sector)
+- `stocks.computed_signals` - Pre-computed MACD/RSI signals for stocks
+- `crypto.price_history` - Historical OHLCV data for crypto
+- `crypto.metadata` - Crypto metadata
+- `crypto.computed_signals` - Pre-computed signals for crypto
 
 ### API Endpoints
 - `GET /api/stocks` - List stocks with filtering, sorting, search
@@ -51,23 +63,29 @@ A full-stack web application for stock and cryptocurrency market analysis. Uses 
 - `POST /api/simulation/compare` - Compare strategies across time periods
 - `POST /api/simulation/market-conditions` - Analyze strategy in bull/bear/sideways markets
 
-### Database Tables
+### Database Tables (PostgreSQL - runtime queries)
 - `stocks` - Stock metadata (symbol, name, exchange, sector)
 - `price_history` - Historical OHLCV data
 - `computed_signals` - Pre-computed analysis results (signal, indicators)
 
 ### Running
 Development: `bash dev.sh` (starts API server on 3001 + Vite on 5000)
-Seed data: `npx tsx server/seed.ts` (requires API keys)
+Seed data: `npx tsx server/seed.ts` (requires API keys + optionally BigQuery credentials)
 
 ## User Preferences
 - Dark "cyber-finance-hacker" theme with black background and green accents
-- Data stored in own database to eliminate reliance on external APIs per request
+- Data stored in own database (BigQuery + PostgreSQL) to eliminate reliance on external APIs per request
 - Trading simulation with configurable strategy parameters
 - Strategy comparison across 10, 20, 30 year periods
 - Market conditions analysis (bull vs bear performance)
+- BigQuery as primary data warehouse (GCP project: market-487302, datasets: stocks, crypto)
 
 ## Recent Changes
+- 2026-02-13: Added BigQuery integration
+  - BigQuery connection module with table auto-creation
+  - Seed script writes to both PostgreSQL (runtime) and BigQuery (warehouse)
+  - Datasets: stocks (stock data), crypto (crypto data)
+  - Tables: price_history, metadata, computed_signals per dataset
 - 2026-02-13: Built trading simulation engine
   - runSimulation endpoint with configurable MACD/RSI parameters
   - Strategy comparison across multiple time periods
