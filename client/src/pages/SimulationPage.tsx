@@ -6,6 +6,7 @@ import TradeLog from "../components/TradeLog";
 import SimulationStats from "../components/SimulationStats";
 import StrategyComparisonView from "../components/StrategyComparisonView";
 import MarketConditionsView from "../components/MarketConditionsView";
+import SymbolPicker from "../components/SymbolPicker";
 
 const DEFAULT_PARAMS: StrategyParams = {
   macdFastPeriod: 12,
@@ -34,6 +35,7 @@ export default function SimulationPage() {
   const [capital, setCapital] = useState(10000);
   const [params, setParams] = useState<StrategyParams>(DEFAULT_PARAMS);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [selectedSymbols, setSelectedSymbols] = useState<string[]>([]);
 
   const [simResult, setSimResult] = useState<SimulationResult | null>(null);
   const [compResult, setCompResult] = useState<StrategyComparison | null>(null);
@@ -48,6 +50,7 @@ export default function SimulationPage() {
         endDate,
         initialCapital: capital,
         strategy: params,
+        ...(selectedSymbols.length > 0 ? { symbols: selectedSymbols } : {}),
       });
       setSimResult(result);
     } catch (err: any) {
@@ -55,7 +58,7 @@ export default function SimulationPage() {
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate, capital, params]);
+  }, [startDate, endDate, capital, params, selectedSymbols]);
 
   const handleCompare = useCallback(async () => {
     setLoading(true);
@@ -70,6 +73,7 @@ export default function SimulationPage() {
         periods: [5, 10, 20],
         initialCapital: capital,
         iterations: 10,
+        ...(selectedSymbols.length > 0 ? { symbols: selectedSymbols } : {}),
       });
       setCompResult(result);
     } catch (err: any) {
@@ -77,7 +81,7 @@ export default function SimulationPage() {
     } finally {
       setLoading(false);
     }
-  }, [params, capital]);
+  }, [params, capital, selectedSymbols]);
 
   const handleConditions = useCallback(async () => {
     setLoading(true);
@@ -91,6 +95,7 @@ export default function SimulationPage() {
         ],
         initialCapital: capital,
         benchmark: "SPY",
+        ...(selectedSymbols.length > 0 ? { symbols: selectedSymbols } : {}),
       });
       setCondResult(result);
     } catch (err: any) {
@@ -98,7 +103,7 @@ export default function SimulationPage() {
     } finally {
       setLoading(false);
     }
-  }, [params, capital]);
+  }, [params, capital, selectedSymbols]);
 
   const updateParam = (key: keyof StrategyParams, value: number) => {
     setParams(p => ({ ...p, [key]: value }));
@@ -157,6 +162,8 @@ export default function SimulationPage() {
                   className="w-full bg-cyber-bg border border-cyber-grid text-cyber-text px-2 py-1 text-sm font-mono focus:border-cyber-green outline-none"
                 />
               </label>
+
+              <SymbolPicker selectedSymbols={selectedSymbols} onChange={setSelectedSymbols} />
             </div>
 
             <button
