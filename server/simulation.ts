@@ -96,24 +96,43 @@ async function loadPriceData(
   symbols: string[] | undefined,
   startDate: string,
   endDate: string,
-  assetType?: string
+  assetType?: string,
+  exchange?: string
 ): Promise<SymbolData[]> {
   let query: string;
   let queryParams: any[];
   const atFilter = assetType === "crypto" ? "crypto" : "stock";
 
   if (symbols && symbols.length > 0) {
-    query = `SELECT symbol, date, open, high, low, close, volume
-             FROM price_history
-             WHERE symbol = ANY($1) AND date >= $2 AND date <= $3 AND asset_type = $4
-             ORDER BY symbol, date ASC`;
-    queryParams = [symbols, startDate, endDate, atFilter];
+    if (exchange) {
+      query = `SELECT ph.symbol, ph.date, ph.open, ph.high, ph.low, ph.close, ph.volume
+               FROM price_history ph
+               JOIN stocks s ON s.symbol = ph.symbol AND s.asset_type = ph.asset_type
+               WHERE ph.symbol = ANY($1) AND ph.date >= $2 AND ph.date <= $3 AND ph.asset_type = $4 AND s.exchange = $5
+               ORDER BY ph.symbol, ph.date ASC`;
+      queryParams = [symbols, startDate, endDate, atFilter, exchange];
+    } else {
+      query = `SELECT symbol, date, open, high, low, close, volume
+               FROM price_history
+               WHERE symbol = ANY($1) AND date >= $2 AND date <= $3 AND asset_type = $4
+               ORDER BY symbol, date ASC`;
+      queryParams = [symbols, startDate, endDate, atFilter];
+    }
   } else {
-    query = `SELECT symbol, date, open, high, low, close, volume
-             FROM price_history
-             WHERE date >= $1 AND date <= $2 AND asset_type = $3
-             ORDER BY symbol, date ASC`;
-    queryParams = [startDate, endDate, atFilter];
+    if (exchange) {
+      query = `SELECT ph.symbol, ph.date, ph.open, ph.high, ph.low, ph.close, ph.volume
+               FROM price_history ph
+               JOIN stocks s ON s.symbol = ph.symbol AND s.asset_type = ph.asset_type
+               WHERE ph.date >= $1 AND ph.date <= $2 AND ph.asset_type = $3 AND s.exchange = $4
+               ORDER BY ph.symbol, ph.date ASC`;
+      queryParams = [startDate, endDate, atFilter, exchange];
+    } else {
+      query = `SELECT symbol, date, open, high, low, close, volume
+               FROM price_history
+               WHERE date >= $1 AND date <= $2 AND asset_type = $3
+               ORDER BY symbol, date ASC`;
+      queryParams = [startDate, endDate, atFilter];
+    }
   }
 
   const result = await pool.query(query, queryParams);
@@ -143,9 +162,10 @@ export async function runSimulation(
   initialCapital: number,
   params: StrategyParams,
   symbols?: string[],
-  assetType?: string
+  assetType?: string,
+  exchange?: string
 ): Promise<SimulationResult> {
-  const allData = await loadPriceData(symbols, startDate, endDate, assetType);
+  const allData = await loadPriceData(symbols, startDate, endDate, assetType, exchange);
 
   if (allData.length === 0) {
     throw new Error("No price data found for the given date range and symbols");
@@ -453,7 +473,8 @@ export async function compareStrategies(
   initialCapital: number,
   iterations: number,
   symbols?: string[],
-  assetType?: string
+  assetType?: string,
+  exchange?: string
 ): Promise<StrategyComparison> {
   const results: StrategyComparison = { strategies: [] };
 
@@ -465,7 +486,7 @@ export async function compareStrategies(
     for (const years of periods) {
       const periodStart = new Date();
       periodStart.setFullYear(periodStart.getFullYear() - years);
-      const allData = await loadPriceData(symbols, periodStart.toISOString().split("T")[0], endDate, assetType);
+      const allData = await loadPriceData(symbols, periodStart.toISOString().split("T")[0], endDate, assetType, exchange);
 
       if (allData.length === 0 || allData[0].bars.length < 30) {
         periodResults.push({
@@ -489,7 +510,7 @@ export async function compareStrategies(
         const startIdx = Math.floor(Math.random() * (sortedDates.length - 60));
         const simStartDate = sortedDates[startIdx];
         try {
-          const result = await runSimulation(simStartDate, endDate, initialCapital, strat.params, symbols, assetType);
+          const result = await runSimulation(simStartDate, endDate, initialCapital, strat.params, symbols, assetType, exchange);
           simResults.push(result);
         } catch {
         }
@@ -534,7 +555,8 @@ export async function analyzeMarketConditions(
   initialCapital: number,
   benchmark: string,
   symbols?: string[],
-  assetType?: string
+  assetType?: string,
+  exchange?: string
 ): Promise<MarketConditionResult[]> {
   const endDate = new Date().toISOString().split("T")[0];
   const startDate = new Date();
@@ -630,7 +652,7 @@ export async function analyzeMarketConditions(
 
       for (const period of condPeriods.slice(0, 5)) {
         try {
-          const result = await runSimulation(period.startDate, period.endDate, initialCapital, strat.params, symbols, assetType);
+          const result = await runSimulation(period.startDate, period.endDate, initialCapital, strat.params, symbols, assetType, exchange);
           simResults.push(result);
         } catch {
         }

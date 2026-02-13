@@ -90,6 +90,15 @@ Seed data: `npx tsx server/seed.ts` (requires API keys + optionally BigQuery cre
   - Scoring: newBuyScore = recencyBoost * rarityBoost (recency decays over lookback window, rarity capped at 5x)
   - Checkbox toggle + lookback days slider in Advanced Settings
   - Trade log shows "New buy score" in reason when feature triggers a buy
+- 2026-02-13: Added exchange filter to Simulation Lab
+  - Clickable pill buttons for ALL, NYSE, NASDAQ, ARCA, BATS, AMEX (stocks only)
+  - Filters simulation data by joining price_history with stocks table on exchange
+  - Applied to all three modes: simulate, compare, market conditions
+  - Exchange field added to SimulationRequest, CompareRequest, MarketConditionsRequest types
+- 2026-02-13: Added clickable symbol filter in Trade Log
+  - Click any ticker symbol in trade log to filter by that symbol
+  - Green filter pill with X button to clear filter
+  - Shows filtered/total count (e.g. "12/340 trades")
 - 2026-02-13: Added assetType filtering to Simulation Lab
   - All three simulation modes (run, compare, market conditions) filter by current Stocks/Crypto toggle
   - SymbolPicker reloads and clears selection when asset type changes

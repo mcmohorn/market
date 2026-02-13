@@ -31,6 +31,8 @@ interface SimulationPageProps {
   assetType: string;
 }
 
+const STOCK_EXCHANGES = ["ALL", "NYSE", "NASDAQ", "ARCA", "BATS", "AMEX"];
+
 export default function SimulationPage({ assetType }: SimulationPageProps) {
   const [tab, setTab] = useState<Tab>("simulate");
   const [loading, setLoading] = useState(false);
@@ -42,10 +44,13 @@ export default function SimulationPage({ assetType }: SimulationPageProps) {
   const [params, setParams] = useState<StrategyParams>(DEFAULT_PARAMS);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [selectedSymbols, setSelectedSymbols] = useState<string[]>([]);
+  const [exchange, setExchange] = useState("ALL");
 
   const [simResult, setSimResult] = useState<SimulationResult | null>(null);
   const [compResult, setCompResult] = useState<StrategyComparison | null>(null);
   const [condResult, setCondResult] = useState<MarketConditionResult[] | null>(null);
+
+  const exchangeFilter = exchange !== "ALL" ? exchange : undefined;
 
   const handleSimulate = useCallback(async () => {
     setLoading(true);
@@ -57,6 +62,7 @@ export default function SimulationPage({ assetType }: SimulationPageProps) {
         initialCapital: capital,
         strategy: params,
         assetType,
+        exchange: exchangeFilter,
         ...(selectedSymbols.length > 0 ? { symbols: selectedSymbols } : {}),
       });
       setSimResult(result);
@@ -65,7 +71,7 @@ export default function SimulationPage({ assetType }: SimulationPageProps) {
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate, capital, params, selectedSymbols, assetType]);
+  }, [startDate, endDate, capital, params, selectedSymbols, assetType, exchangeFilter]);
 
   const handleCompare = useCallback(async () => {
     setLoading(true);
@@ -81,6 +87,7 @@ export default function SimulationPage({ assetType }: SimulationPageProps) {
         initialCapital: capital,
         iterations: 10,
         assetType,
+        exchange: exchangeFilter,
         ...(selectedSymbols.length > 0 ? { symbols: selectedSymbols } : {}),
       });
       setCompResult(result);
@@ -89,7 +96,7 @@ export default function SimulationPage({ assetType }: SimulationPageProps) {
     } finally {
       setLoading(false);
     }
-  }, [params, capital, selectedSymbols, assetType]);
+  }, [params, capital, selectedSymbols, assetType, exchangeFilter]);
 
   const handleConditions = useCallback(async () => {
     setLoading(true);
@@ -104,6 +111,7 @@ export default function SimulationPage({ assetType }: SimulationPageProps) {
         initialCapital: capital,
         benchmark: assetType === "crypto" ? "BTC" : "SPY",
         assetType,
+        exchange: exchangeFilter,
         ...(selectedSymbols.length > 0 ? { symbols: selectedSymbols } : {}),
       });
       setCondResult(result);
@@ -112,7 +120,7 @@ export default function SimulationPage({ assetType }: SimulationPageProps) {
     } finally {
       setLoading(false);
     }
-  }, [params, capital, selectedSymbols, assetType]);
+  }, [params, capital, selectedSymbols, assetType, exchangeFilter]);
 
   const updateParam = (key: keyof StrategyParams, value: number) => {
     setParams(p => ({ ...p, [key]: value }));
@@ -173,6 +181,27 @@ export default function SimulationPage({ assetType }: SimulationPageProps) {
               </label>
 
               <SymbolPicker selectedSymbols={selectedSymbols} onChange={setSelectedSymbols} assetType={assetType} />
+
+              {assetType === "stock" && (
+                <div>
+                  <span className="text-cyber-muted text-xs font-mono block mb-1">Exchange</span>
+                  <div className="flex flex-wrap gap-1">
+                    {STOCK_EXCHANGES.map(ex => (
+                      <button
+                        key={ex}
+                        onClick={() => setExchange(ex)}
+                        className={`px-2 py-0.5 text-[11px] font-mono transition-all ${
+                          exchange === ex
+                            ? "bg-cyber-green text-cyber-bg border border-cyber-green"
+                            : "text-cyber-muted border border-cyber-grid hover:border-cyber-green hover:text-cyber-green"
+                        }`}
+                      >
+                        {ex}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <button

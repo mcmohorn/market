@@ -181,6 +181,7 @@ export interface SimulationRequest {
   strategy: Partial<StrategyParams>;
   symbols?: string[];
   assetType?: string;
+  exchange?: string;
 }
 
 export interface CompareRequest {
@@ -190,6 +191,7 @@ export interface CompareRequest {
   iterations: number;
   symbols?: string[];
   assetType?: string;
+  exchange?: string;
 }
 
 export interface MarketConditionsRequest {
@@ -198,4 +200,5 @@ export interface MarketConditionsRequest {
   benchmark: string;
   symbols?: string[];
   assetType?: string;
+  exchange?: string;
 }
