@@ -118,6 +118,7 @@ export default function SimulationPage({ assetType }: SimulationPageProps) {
   const [simResult, setSimResult] = useState<SimulationResult | null>(null);
   const [compResult, setCompResult] = useState<StrategyComparison | null>(null);
   const [condResult, setCondResult] = useState<MarketConditionResult[] | null>(null);
+  const [tradeLogDate, setTradeLogDate] = useState<string | null>(null);
 
   const exchangeFilter = exchange !== "ALL" ? exchange : undefined;
 
@@ -447,8 +448,8 @@ export default function SimulationPage({ assetType }: SimulationPageProps) {
 
           {tab === "simulate" && simResult && (
             <>
-              <EquityCurve result={simResult} />
-              <TradeLog trades={simResult.trades} />
+              <EquityCurve result={simResult} onDateClick={setTradeLogDate} />
+              <TradeLog trades={simResult.trades} highlightDate={tradeLogDate} />
             </>
           )}
 

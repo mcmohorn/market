@@ -1,12 +1,13 @@
-import { useMemo } from "react";
+import { useMemo, useCallback } from "react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Area, ComposedChart } from "recharts";
 import type { SimulationResult } from "../../../shared/types";
 
 interface Props {
   result: SimulationResult;
+  onDateClick?: (date: string) => void;
 }
 
-export default function EquityCurve({ result }: Props) {
+export default function EquityCurve({ result, onDateClick }: Props) {
   const chartData = useMemo(() => {
     return result.timeline.map(snap => ({
       date: snap.date,
@@ -29,12 +30,25 @@ export default function EquityCurve({ result }: Props) {
 
   const isProfit = result.totalReturn >= 0;
 
+  const handleClick = useCallback((state: any) => {
+    if (state?.activePayload?.[0]?.payload?.date && onDateClick) {
+      onDateClick(state.activePayload[0].payload.date);
+    }
+  }, [onDateClick]);
+
   return (
     <div className="border border-cyber-grid p-3">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-cyber-green font-mono text-sm uppercase tracking-wider">
-          Equity Curve
-        </h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-cyber-green font-mono text-sm uppercase tracking-wider">
+            Equity Curve
+          </h3>
+          {onDateClick && (
+            <span className="text-cyber-muted text-[10px] font-mono">
+              (click chart to jump to trade log)
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-4 text-xs font-mono">
           <span className="flex items-center gap-1">
             <span className="w-3 h-[2px] bg-cyber-green inline-block"></span>
@@ -51,7 +65,7 @@ export default function EquityCurve({ result }: Props) {
         </div>
       </div>
       <ResponsiveContainer width="100%" height={350}>
-        <ComposedChart data={chartData}>
+        <ComposedChart data={chartData} onClick={handleClick} style={{ cursor: onDateClick ? "crosshair" : "default" }}>
           <defs>
             <linearGradient id="portfolioGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={isProfit ? "#00ff41" : "#ff4444"} stopOpacity={0.3} />
