@@ -1,4 +1,4 @@
-import { pool } from "./db";
+import { queryBigQuery, getDataset, tbl, normalizeDate } from "./bigquery";
 import type {
   StockBar,
   IndicatorData,
@@ -99,50 +99,52 @@ async function loadPriceData(
   assetType?: string,
   exchange?: string
 ): Promise<SymbolData[]> {
-  let query: string;
-  let queryParams: any[];
-  const atFilter = assetType === "crypto" ? "crypto" : "stock";
+  const ds = getDataset(assetType);
+  const priceTable = tbl(ds, "price_history");
+  const metaTable = tbl(ds, "metadata");
+
+  let sql: string;
+  const params: any = { startDate, endDate };
 
   if (symbols && symbols.length > 0) {
+    params.symbols = symbols;
     if (exchange) {
-      query = `SELECT ph.symbol, ph.date, ph.open, ph.high, ph.low, ph.close, ph.volume
-               FROM price_history ph
-               JOIN stocks s ON s.symbol = ph.symbol AND s.asset_type = ph.asset_type
-               WHERE ph.symbol = ANY($1) AND ph.date >= $2 AND ph.date <= $3 AND ph.asset_type = $4 AND s.exchange = $5
-               ORDER BY ph.symbol, ph.date ASC`;
-      queryParams = [symbols, startDate, endDate, atFilter, exchange];
+      params.exchange = exchange;
+      sql = `SELECT ph.symbol, ph.date, ph.open, ph.high, ph.low, ph.close, ph.volume
+             FROM ${priceTable} ph
+             JOIN ${metaTable} m ON m.symbol = ph.symbol
+             WHERE ph.symbol IN UNNEST(@symbols) AND ph.date >= @startDate AND ph.date <= @endDate AND m.exchange = @exchange
+             ORDER BY ph.symbol, ph.date ASC`;
     } else {
-      query = `SELECT symbol, date, open, high, low, close, volume
-               FROM price_history
-               WHERE symbol = ANY($1) AND date >= $2 AND date <= $3 AND asset_type = $4
-               ORDER BY symbol, date ASC`;
-      queryParams = [symbols, startDate, endDate, atFilter];
+      sql = `SELECT symbol, date, open, high, low, close, volume
+             FROM ${priceTable}
+             WHERE symbol IN UNNEST(@symbols) AND date >= @startDate AND date <= @endDate
+             ORDER BY symbol, date ASC`;
     }
   } else {
     if (exchange) {
-      query = `SELECT ph.symbol, ph.date, ph.open, ph.high, ph.low, ph.close, ph.volume
-               FROM price_history ph
-               JOIN stocks s ON s.symbol = ph.symbol AND s.asset_type = ph.asset_type
-               WHERE ph.date >= $1 AND ph.date <= $2 AND ph.asset_type = $3 AND s.exchange = $4
-               ORDER BY ph.symbol, ph.date ASC`;
-      queryParams = [startDate, endDate, atFilter, exchange];
+      params.exchange = exchange;
+      sql = `SELECT ph.symbol, ph.date, ph.open, ph.high, ph.low, ph.close, ph.volume
+             FROM ${priceTable} ph
+             JOIN ${metaTable} m ON m.symbol = ph.symbol
+             WHERE ph.date >= @startDate AND ph.date <= @endDate AND m.exchange = @exchange
+             ORDER BY ph.symbol, ph.date ASC`;
     } else {
-      query = `SELECT symbol, date, open, high, low, close, volume
-               FROM price_history
-               WHERE date >= $1 AND date <= $2 AND asset_type = $3
-               ORDER BY symbol, date ASC`;
-      queryParams = [startDate, endDate, atFilter];
+      sql = `SELECT symbol, date, open, high, low, close, volume
+             FROM ${priceTable}
+             WHERE date >= @startDate AND date <= @endDate
+             ORDER BY symbol, date ASC`;
     }
   }
 
-  const result = await pool.query(query, queryParams);
+  const rows = await queryBigQuery(sql, params);
 
   const bySymbol = new Map<string, StockBar[]>();
-  for (const row of result.rows) {
+  for (const row of rows) {
     const sym = row.symbol;
     if (!bySymbol.has(sym)) bySymbol.set(sym, []);
     bySymbol.get(sym)!.push({
-      date: row.date.toISOString().split("T")[0],
+      date: normalizeDate(row.date),
       open: parseFloat(row.open),
       high: parseFloat(row.high),
       low: parseFloat(row.low),
@@ -652,7 +654,10 @@ export async function analyzeMarketConditions(
 
       for (const period of condPeriods.slice(0, 5)) {
         try {
-          const result = await runSimulation(period.startDate, period.endDate, initialCapital, strat.params, symbols, assetType, exchange);
+          const result = await runSimulation(
+            period.startDate, period.endDate, initialCapital,
+            strat.params, symbols, assetType, exchange
+          );
           simResults.push(result);
         } catch {
         }
@@ -664,22 +669,21 @@ export async function analyzeMarketConditions(
           avgReturnPct: 0, avgAnnualized: 0,
           winRate: 0, maxDrawdownPct: 0,
         });
-        continue;
+      } else {
+        stratPerf.push({
+          strategyName: strat.name,
+          avgReturnPct: simResults.reduce((s, r) => s + r.totalReturnPct, 0) / simResults.length,
+          avgAnnualized: simResults.reduce((s, r) => s + r.annualizedReturn, 0) / simResults.length,
+          winRate: simResults.filter(r => r.totalReturn > 0).length / simResults.length * 100,
+          maxDrawdownPct: Math.max(...simResults.map(r => r.maxDrawdownPct)),
+        });
       }
-
-      stratPerf.push({
-        strategyName: strat.name,
-        avgReturnPct: simResults.reduce((s, r) => s + r.totalReturnPct, 0) / simResults.length,
-        avgAnnualized: simResults.reduce((s, r) => s + r.annualizedReturn, 0) / simResults.length,
-        winRate: simResults.filter(r => r.totalReturn > 0).length / simResults.length * 100,
-        maxDrawdownPct: Math.max(...simResults.map(r => r.maxDrawdownPct)),
-      });
     }
 
     results.push({
       condition,
       periodCount: condPeriods.length,
-      avgDuration,
+      avgDuration: Math.round(avgDuration),
       strategyPerformance: stratPerf,
     });
   }

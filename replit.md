@@ -34,18 +34,19 @@ A full-stack web application for stock and cryptocurrency market analysis. Uses 
 - **Language**: TypeScript (Node.js)
 - **Frontend**: React 19, Vite, AG Grid Community, Recharts, TailwindCSS
 - **Backend**: Express.js
-- **Database**: PostgreSQL (Replit built-in) + Google BigQuery (GCP project: market-487302)
+- **Database**: Google BigQuery (GCP project: market-487302) - primary and only runtime data store
 - **BigQuery Datasets**: `stocks` (stock data), `crypto` (crypto data)
+- **PostgreSQL**: Only used by seeding scripts (optional via ALSO_WRITE_POSTGRES flag), NOT used at runtime
 - **APIs**: Alpaca (stocks), Tiingo (crypto data)
 - **Analysis**: MACD, RSI technical indicators
 - **Theme**: Dark cyber/hacker aesthetic (black bg, green accents)
 
 ### Environment Variables Required
-- `DATABASE_URL` - PostgreSQL connection (auto-provided by Replit)
-- `ALPACA_API_KEY_ID` - Alpaca API key (for data seeding)
-- `ALPACA_API_KEY_SECRET` - Alpaca API secret (for data seeding)
-- `TIINGO_API_TOKEN` - Tiingo API token for crypto data (for data seeding)
-- `GOOGLE_CREDENTIALS_JSON` - GCP service account JSON key (for BigQuery access)
+- `GOOGLE_CREDENTIALS_JSON` - GCP service account JSON key (for BigQuery access) - **required for runtime**
+- `ALPACA_API_KEY_ID` - Alpaca API key (for data seeding only)
+- `ALPACA_API_KEY_SECRET` - Alpaca API secret (for data seeding only)
+- `TIINGO_API_TOKEN` - Tiingo API token for crypto data (for data seeding only)
+- `DATABASE_URL` - PostgreSQL connection (only needed by seeding scripts, auto-provided by Replit)
 - `ALSO_WRITE_POSTGRES` - Set to "false" to skip PostgreSQL writes during seeding (default: true)
 
 ### BigQuery Schema (project: market-487302)
@@ -67,10 +68,11 @@ A full-stack web application for stock and cryptocurrency market analysis. Uses 
 - `POST /api/simulation/compare` - Compare strategies across time periods
 - `POST /api/simulation/market-conditions` - Analyze strategy in bull/bear/sideways markets
 
-### Database Tables (PostgreSQL - runtime queries)
-- `stocks` - Stock metadata (symbol, name, exchange, sector)
-- `price_history` - Historical OHLCV data
-- `computed_signals` - Pre-computed analysis results (signal, indicators)
+### Runtime Data Flow
+- All runtime queries go directly to BigQuery (no PostgreSQL dependency)
+- `routes.ts` and `simulation.ts` use `queryBigQuery()` with parameterized queries
+- Dataset resolved at runtime based on asset_type: "stock" → `stocks`, "crypto" → `crypto`
+- Helper functions: `getDataset()`, `tbl()`, `normalizeDate()` in `bigquery.ts`
 
 ### Running
 Development: `bash dev.sh` (starts API server on 3001 + Vite on 5000)
@@ -156,6 +158,12 @@ Seed data: `npx tsx server/seed.ts` (requires API keys + optionally BigQuery cre
   - Click DATE or P&L headers to sort ascending/descending
   - Click equity curve chart to jump trade log to that date
   - Auto-expands and scrolls to nearest trade with green highlight
+- 2026-02-14: Removed PostgreSQL runtime dependency - BigQuery is now the only data store
+  - All API endpoints (routes.ts) now query BigQuery directly using parameterized queries
+  - Simulation engine (simulation.ts) loads price data from BigQuery
+  - dev.ts and index.ts no longer call initDB() or require DATABASE_URL
+  - Helper functions: getDataset(), tbl(), normalizeDate() for BigQuery SQL generation
+  - BigQuery timestamp objects properly normalized for frontend display
 - 2026-02-14: Migrated all data to BigQuery as primary data warehouse
   - Full migration of 8,403 stock symbols (7M+ price rows) and 18 crypto symbols (47K rows)
   - Migration script (migrate-to-bigquery.ts) supports MODE=setup/metadata/prices/signals with OFFSET/LIMIT for resumable batched processing

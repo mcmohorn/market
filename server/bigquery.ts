@@ -179,6 +179,22 @@ export async function queryBigQuery(sql: string, params?: any): Promise<any[]> {
   return rows;
 }
 
+export function getDataset(assetType: string | undefined): string {
+  return assetType === "crypto" ? CRYPTO_DATASET : STOCKS_DATASET;
+}
+
+export function tbl(dataset: string, table: string): string {
+  return `\`${PROJECT_ID}.${dataset}.${table}\``;
+}
+
+export function normalizeDate(val: any): string {
+  if (!val) return "";
+  if (typeof val === "string") return val.split("T")[0];
+  if (val.value) return String(val.value).split("T")[0];
+  if (val instanceof Date) return val.toISOString().split("T")[0];
+  return String(val);
+}
+
 export async function clearTable(dataset: string, table: string) {
   const bq = getBigQueryClient();
   const tableRef = bq.dataset(dataset).table(table);
