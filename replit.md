@@ -13,7 +13,11 @@ A full-stack web application for stock and cryptocurrency market analysis. Uses 
   - `db.ts` - PostgreSQL connection and schema initialization
   - `bigquery.ts` - Google BigQuery connection, table setup, query helpers
   - `seed.ts` - Data seeding script (pulls from Alpaca/Tiingo, writes to PostgreSQL + BigQuery)
+  - `seed-stocks-extend.ts` - Extend stock history year-by-year
+  - `seed-crypto-extend.ts` - Extend crypto history back to 2016
   - `simulation.ts` - Trading simulation engine (backtesting, comparison, market conditions)
+- `Dockerfile` - Multi-stage Docker build for Cloud Run
+- `cloudbuild.yaml` - Google Cloud Build config for CI/CD to Cloud Run
 - `client/` - React frontend (Vite, TypeScript)
   - `src/App.tsx` - Main app with navigation (Market Scanner, Simulation Lab)
   - `src/components/` - UI components (Header, StockGrid, TopPerformers, EquityCurve, TradeLog, etc.)
@@ -144,6 +148,14 @@ Seed data: `npx tsx server/seed.ts` (requires API keys + optionally BigQuery cre
   - Market conditions analysis (bull/bear/sideways based on SPY 200DMA)
   - Equity curve visualization, trade log, simulation stats
   - Navigation between Market Scanner and Simulation Lab
+- 2026-02-14: Added README with local run instructions, Dockerfile, cloudbuild.yaml for Cloud Run
+  - Multi-stage Dockerfile (Node 20-slim, build → production)
+  - Cloud Build pushes to Artifact Registry and deploys to Cloud Run
+  - Production server uses import.meta.url for ESM-compatible path resolution
+- 2026-02-14: Added sortable P&L column and equity curve click-to-navigate in trade log
+  - Click DATE or P&L headers to sort ascending/descending
+  - Click equity curve chart to jump trade log to that date
+  - Auto-expands and scrolls to nearest trade with green highlight
 - 2026-02-12: Rebuilt as TypeScript full-stack web app
   - Express backend + React frontend with Vite
   - PostgreSQL database with schema for stocks, price history, signals

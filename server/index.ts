@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import path from "path";
+import { fileURLToPath } from "url";
 import { initDB } from "./db";
 import routes from "./routes";
 
@@ -11,7 +12,9 @@ app.use(cors());
 app.use(express.json());
 app.use(routes);
 
-const distPath = path.resolve(__dirname, "../dist/public");
+const __filename_ = typeof __filename !== "undefined" ? __filename : fileURLToPath(import.meta.url);
+const __dirname_ = path.dirname(__filename_);
+const distPath = path.resolve(__dirname_, "../public");
 app.use(express.static(distPath));
 app.get("*", (_req, res) => {
   res.sendFile(path.join(distPath, "index.html"));
