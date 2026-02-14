@@ -1,5 +1,5 @@
 import { pool, initDB } from "./db";
-import { ensureBigQueryTables, insertRows, clearTable, dropAndRecreateTables, getBigQueryClient, PROJECT_ID, STOCKS_DATASET, CRYPTO_DATASET } from "./bigquery";
+import { ensureBigQueryTables, insertRows, dropAndRecreateTables, getBigQueryClient, PROJECT_ID, STOCKS_DATASET, CRYPTO_DATASET } from "./bigquery";
 import { analyzeStock, getSignal, getSignalStrength, countSignalChanges, lastSignalChangeDate } from "../shared/indicators";
 import type { StockBar } from "../shared/types";
 
@@ -10,7 +10,7 @@ const TIINGO_TOKEN = process.env.TIINGO_API_TOKEN || "";
 const ALPACA_DATA_URL = "https://data.alpaca.markets/v2";
 const ALPACA_PAPER_URL = "https://paper-api.alpaca.markets/v2";
 
-const USE_BIGQUERY = process.env.USE_BIGQUERY !== "false";
+const ALSO_WRITE_POSTGRES = process.env.ALSO_WRITE_POSTGRES !== "false";
 
 interface AlpacaAsset {
   id: string;
@@ -48,7 +48,6 @@ async function fetchAlpacaBars(symbols: string[], startDate: string, endDate: st
     const symbolsParam = batch.join(",");
 
     let pageToken: string | null = null;
-    let pages = 0;
     do {
       const url = new URL(`${ALPACA_DATA_URL}/stocks/bars`);
       url.searchParams.set("symbols", symbolsParam);
@@ -92,7 +91,6 @@ async function fetchAlpacaBars(symbols: string[], startDate: string, endDate: st
       }
 
       pageToken = data.next_page_token || null;
-      pages++;
     } while (pageToken);
 
     if ((i / batchSize) % 10 === 0 && i > 0) {
@@ -231,7 +229,7 @@ async function storePriceDataBigQuery(allBars: Record<string, StockBar[]>, datas
   }
 }
 
-async function computeAndStoreSignals(bigqueryReady: boolean = false) {
+async function computeAndStoreSignals() {
   console.log("Computing indicators for all symbols...");
   const client = await pool.connect();
   try {
@@ -239,7 +237,8 @@ async function computeAndStoreSignals(bigqueryReady: boolean = false) {
     const symbols = symbolsResult.rows.map(r => r.symbol);
     let processed = 0;
 
-    const bqSignalRows: any[] = [];
+    const bqStockSignals: any[] = [];
+    const bqCryptoSignals: any[] = [];
 
     for (const symbol of symbols) {
       const barsResult = await client.query(
@@ -289,32 +288,29 @@ async function computeAndStoreSignals(bigqueryReady: boolean = false) {
         ]
       );
 
-      if (bigqueryReady) {
-        const bqDataset = meta.asset_type === "crypto" ? CRYPTO_DATASET : STOCKS_DATASET;
-        bqSignalRows.push({
-          dataset: bqDataset,
-          row: {
-            symbol,
-            name: meta.name,
-            exchange: meta.exchange,
-            sector: meta.sector || "",
-            asset_type: meta.asset_type,
-            price: last.price,
-            change_val: changeVal,
-            change_percent: changePct,
-            signal,
-            macd_histogram: last.macdHistogram,
-            macd_histogram_adjusted: last.macdHistogramAdjusted,
-            rsi: last.rsi,
-            signal_strength: signalStrengthVal,
-            last_signal_change: lastChange,
-            signal_changes: signalChangesVal,
-            data_points: bars.length,
-            volume: bars[bars.length - 1].volume,
-            computed_at: new Date().toISOString(),
-          },
-        });
-      }
+      const signalRow = {
+        symbol,
+        name: meta.name,
+        exchange: meta.exchange,
+        sector: meta.sector || "",
+        asset_type: meta.asset_type,
+        price: last.price,
+        change_val: changeVal,
+        change_percent: changePct,
+        signal,
+        macd_histogram: last.macdHistogram,
+        macd_histogram_adjusted: last.macdHistogramAdjusted,
+        rsi: last.rsi,
+        signal_strength: signalStrengthVal,
+        last_signal_change: lastChange,
+        signal_changes: signalChangesVal,
+        data_points: bars.length,
+        volume: bars[bars.length - 1].volume,
+        computed_at: new Date().toISOString(),
+      };
+
+      if (meta.asset_type === "crypto") bqCryptoSignals.push(signalRow);
+      else bqStockSignals.push(signalRow);
 
       processed++;
       if (processed % 200 === 0) {
@@ -323,18 +319,13 @@ async function computeAndStoreSignals(bigqueryReady: boolean = false) {
     }
     console.log(`Computed signals for ${processed} symbols total`);
 
-    if (bigqueryReady && bqSignalRows.length > 0) {
-      const stockSignals = bqSignalRows.filter(r => r.dataset === STOCKS_DATASET).map(r => r.row);
-      const cryptoSignals = bqSignalRows.filter(r => r.dataset === CRYPTO_DATASET).map(r => r.row);
-
-      if (stockSignals.length > 0) {
-        console.log(`  Writing ${stockSignals.length} stock signals to BigQuery...`);
-        await insertRows(STOCKS_DATASET, "computed_signals", stockSignals);
-      }
-      if (cryptoSignals.length > 0) {
-        console.log(`  Writing ${cryptoSignals.length} crypto signals to BigQuery...`);
-        await insertRows(CRYPTO_DATASET, "computed_signals", cryptoSignals);
-      }
+    if (bqStockSignals.length > 0) {
+      console.log(`  Writing ${bqStockSignals.length} stock signals to BigQuery...`);
+      await insertRows(STOCKS_DATASET, "computed_signals", bqStockSignals);
+    }
+    if (bqCryptoSignals.length > 0) {
+      console.log(`  Writing ${bqCryptoSignals.length} crypto signals to BigQuery...`);
+      await insertRows(CRYPTO_DATASET, "computed_signals", bqCryptoSignals);
     }
   } finally {
     client.release();
@@ -347,22 +338,16 @@ function sleep(ms: number) {
 
 async function main() {
   console.log("=== Market Data Seed ===");
+  console.log(`Primary store: BigQuery (project: ${PROJECT_ID})`);
+  console.log(`PostgreSQL write: ${ALSO_WRITE_POSTGRES ? "enabled" : "disabled"}`);
+
   console.log("Initializing PostgreSQL...");
   await initDB();
 
-  let bigqueryReady = false;
-  if (USE_BIGQUERY) {
-    console.log("Initializing BigQuery tables...");
-    try {
-      console.log("Dropping and recreating BigQuery tables for fresh seed...");
-      await dropAndRecreateTables();
-      console.log("BigQuery tables ready");
-      bigqueryReady = true;
-    } catch (err: any) {
-      console.warn("BigQuery setup warning:", err.message);
-      console.log("Will continue with PostgreSQL only. Set GOOGLE_CREDENTIALS_JSON to enable BigQuery.");
-    }
-  }
+  console.log("Initializing BigQuery tables...");
+  console.log("Dropping and recreating BigQuery tables for fresh seed...");
+  await dropAndRecreateTables();
+  console.log("BigQuery tables ready");
 
   const endDate = new Date().toISOString().split("T")[0];
   const stockStartDate = "2016-01-01";
@@ -386,46 +371,46 @@ async function main() {
       console.log(`Fetching bars for chunk ${chunkNum}/${totalChunks} (${chunk.length} symbols)...`);
       const bars = await fetchAlpacaBars(chunk, stockStartDate, endDate);
       const barCount = Object.values(bars).reduce((s, b) => s + b.length, 0);
-      await storePriceDataPostgres(bars, "stock", assetMeta);
-      totalStored += Object.keys(bars).length;
-      console.log(`  Stored ${Object.keys(bars).length} symbols (${barCount} bars) to PostgreSQL [total: ${totalStored}]`);
 
-      if (bigqueryReady) {
-        try {
-          await storePriceDataBigQuery(bars, STOCKS_DATASET, assetMeta);
-        } catch (err: any) {
-          console.warn(`  BigQuery write warning: ${err.message}`);
-        }
+      try {
+        await storePriceDataBigQuery(bars, STOCKS_DATASET, assetMeta);
+        console.log(`  Stored ${Object.keys(bars).length} symbols (${barCount} bars) to BigQuery`);
+      } catch (err: any) {
+        console.error(`  BigQuery write error: ${err.message}`);
       }
+
+      if (ALSO_WRITE_POSTGRES) {
+        await storePriceDataPostgres(bars, "stock", assetMeta);
+      }
+
+      totalStored += Object.keys(bars).length;
 
       if (global.gc) global.gc();
       await sleep(500);
     }
   } else {
     console.log("No Alpaca API keys configured - skipping stock data");
-    console.log("Set ALPACA_API_KEY_ID and ALPACA_API_KEY_SECRET to fetch stock data");
   }
 
   if (TIINGO_TOKEN) {
     const cryptoBars = await fetchTiingoCrypto();
     const cryptoMeta = new Map(Object.keys(cryptoBars).map(s => [s, { name: s, exchange: "CRYPTO" }]));
-    await storePriceDataPostgres(cryptoBars, "crypto", cryptoMeta);
-    console.log(`Stored ${Object.keys(cryptoBars).length} crypto symbols to PostgreSQL`);
 
-    if (bigqueryReady) {
-      try {
-        await storePriceDataBigQuery(cryptoBars, CRYPTO_DATASET, cryptoMeta);
-        console.log(`Stored ${Object.keys(cryptoBars).length} crypto symbols to BigQuery`);
-      } catch (err: any) {
-        console.warn(`  BigQuery write warning: ${err.message}`);
-      }
+    try {
+      await storePriceDataBigQuery(cryptoBars, CRYPTO_DATASET, cryptoMeta);
+      console.log(`Stored ${Object.keys(cryptoBars).length} crypto symbols to BigQuery`);
+    } catch (err: any) {
+      console.error(`  BigQuery write error: ${err.message}`);
+    }
+
+    if (ALSO_WRITE_POSTGRES) {
+      await storePriceDataPostgres(cryptoBars, "crypto", cryptoMeta);
     }
   } else {
     console.log("No Tiingo token configured - skipping crypto data");
-    console.log("Set TIINGO_API_TOKEN to fetch crypto data");
   }
 
-  await computeAndStoreSignals(bigqueryReady);
+  await computeAndStoreSignals();
   console.log("=== Seed complete ===");
   process.exit(0);
 }

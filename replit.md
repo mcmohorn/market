@@ -46,7 +46,7 @@ A full-stack web application for stock and cryptocurrency market analysis. Uses 
 - `ALPACA_API_KEY_SECRET` - Alpaca API secret (for data seeding)
 - `TIINGO_API_TOKEN` - Tiingo API token for crypto data (for data seeding)
 - `GOOGLE_CREDENTIALS_JSON` - GCP service account JSON key (for BigQuery access)
-- `USE_BIGQUERY` - Set to "false" to disable BigQuery writes (default: enabled)
+- `ALSO_WRITE_POSTGRES` - Set to "false" to skip PostgreSQL writes during seeding (default: true)
 
 ### BigQuery Schema (project: market-487302)
 - `stocks.price_history` - Historical OHLCV data for stocks
@@ -156,6 +156,12 @@ Seed data: `npx tsx server/seed.ts` (requires API keys + optionally BigQuery cre
   - Click DATE or P&L headers to sort ascending/descending
   - Click equity curve chart to jump trade log to that date
   - Auto-expands and scrolls to nearest trade with green highlight
+- 2026-02-14: Migrated all data to BigQuery as primary data warehouse
+  - Full migration of 8,403 stock symbols (7M+ price rows) and 18 crypto symbols (47K rows)
+  - Migration script (migrate-to-bigquery.ts) supports MODE=setup/metadata/prices/signals with OFFSET/LIMIT for resumable batched processing
+  - Seed scripts (seed.ts, seed-stocks-extend.ts, seed-crypto-extend.ts) now write to BigQuery as primary, PostgreSQL as optional secondary via ALSO_WRITE_POSTGRES flag
+  - BigQuery insertRows function supports both streaming inserts and DML mode with retry logic for 404 errors
+  - BigQuery data: stocks.price_history, stocks.metadata, stocks.computed_signals, crypto.price_history, crypto.metadata, crypto.computed_signals
 - 2026-02-12: Rebuilt as TypeScript full-stack web app
   - Express backend + React frontend with Vite
   - PostgreSQL database with schema for stocks, price history, signals

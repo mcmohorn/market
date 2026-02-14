@@ -113,23 +113,59 @@ async function ensureTable(dataset: any, tableName: string, schema: any[]) {
   }
 }
 
-export async function insertRows(dataset: string, table: string, rows: any[]) {
+export async function insertRows(dataset: string, table: string, rows: any[], useDML = false) {
   if (rows.length === 0) return;
   const bq = getBigQueryClient();
+
+  if (useDML) {
+    await insertRowsDML(dataset, table, rows);
+    return;
+  }
+
   const batchSize = 500;
+  for (let i = 0; i < rows.length; i += batchSize) {
+    const batch = rows.slice(i, i + batchSize);
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        await bq.dataset(dataset).table(table).insert(batch);
+        break;
+      } catch (err: any) {
+        if (err.name === "PartialFailureError") {
+          const insertErrors = err.errors || [];
+          console.warn(`Partial insert failure in ${dataset}.${table}: ${insertErrors.length} row errors`);
+          break;
+        } else if (err.code === 404 && retries > 1) {
+          retries--;
+          console.warn(`Table not ready (404), retrying in 10s... (${retries} left)`);
+          await new Promise(r => setTimeout(r, 10000));
+        } else {
+          throw err;
+        }
+      }
+    }
+  }
+}
+
+async function insertRowsDML(dataset: string, table: string, rows: any[]) {
+  const bq = getBigQueryClient();
+  const batchSize = 200;
 
   for (let i = 0; i < rows.length; i += batchSize) {
     const batch = rows.slice(i, i + batchSize);
-    try {
-      await bq.dataset(dataset).table(table).insert(batch);
-    } catch (err: any) {
-      if (err.name === "PartialFailureError") {
-        const insertErrors = err.errors || [];
-        console.warn(`Partial insert failure in ${dataset}.${table}: ${insertErrors.length} row errors`);
-      } else {
-        throw err;
-      }
-    }
+    const columns = Object.keys(batch[0]);
+    const valueRows = batch.map(row => {
+      const vals = columns.map(col => {
+        const v = row[col];
+        if (v === null || v === undefined) return "NULL";
+        if (typeof v === "number") return String(v);
+        return `'${String(v).replace(/'/g, "\\'")}'`;
+      });
+      return `(${vals.join(",")})`;
+    });
+
+    const sql = `INSERT INTO \`${PROJECT_ID}.${dataset}.${table}\` (${columns.join(",")}) VALUES ${valueRows.join(",")}`;
+    await bq.query({ query: sql, location: BQ_LOCATION });
   }
 }
 
