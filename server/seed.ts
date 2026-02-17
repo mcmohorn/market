@@ -1,5 +1,4 @@
 import { pool, initDB } from "./db";
-import { ensureBigQueryTables, insertRows, dropAndRecreateTables, getBigQueryClient, PROJECT_ID, STOCKS_DATASET, CRYPTO_DATASET } from "./bigquery";
 import { analyzeStock, getSignal, getSignalStrength, countSignalChanges, lastSignalChangeDate } from "../shared/indicators";
 import type { StockBar } from "../shared/types";
 
@@ -9,8 +8,6 @@ const TIINGO_TOKEN = process.env.TIINGO_API_TOKEN || "";
 
 const ALPACA_DATA_URL = "https://data.alpaca.markets/v2";
 const ALPACA_PAPER_URL = "https://paper-api.alpaca.markets/v2";
-
-const ALSO_WRITE_POSTGRES = process.env.ALSO_WRITE_POSTGRES !== "false";
 
 interface AlpacaAsset {
   id: string;
@@ -151,7 +148,7 @@ async function fetchTiingoCrypto(): Promise<Record<string, StockBar[]>> {
   return results;
 }
 
-async function storePriceDataPostgres(allBars: Record<string, StockBar[]>, assetType: string, assetMeta?: Map<string, { name: string; exchange: string }>) {
+async function storePriceData(allBars: Record<string, StockBar[]>, assetType: string, assetMeta?: Map<string, { name: string; exchange: string }>) {
   const client = await pool.connect();
   try {
     for (const [symbol, bars] of Object.entries(allBars)) {
@@ -189,46 +186,6 @@ async function storePriceDataPostgres(allBars: Record<string, StockBar[]>, asset
   }
 }
 
-async function storePriceDataBigQuery(allBars: Record<string, StockBar[]>, dataset: string, assetMeta?: Map<string, { name: string; exchange: string }>) {
-  const metaRows: any[] = [];
-  const priceRows: any[] = [];
-
-  for (const [symbol, bars] of Object.entries(allBars)) {
-    if (bars.length < 30) continue;
-
-    const meta = assetMeta?.get(symbol);
-    metaRows.push({
-      symbol,
-      name: meta?.name || symbol,
-      exchange: meta?.exchange || "",
-      sector: "",
-      asset_type: dataset === CRYPTO_DATASET ? "crypto" : "stock",
-    });
-
-    for (const bar of bars) {
-      priceRows.push({
-        symbol,
-        date: bar.date,
-        open: bar.open,
-        high: bar.high,
-        low: bar.low,
-        close: bar.close,
-        volume: Math.round(bar.volume),
-      });
-    }
-  }
-
-  if (metaRows.length > 0) {
-    console.log(`  Inserting ${metaRows.length} metadata rows to BigQuery ${dataset}.metadata...`);
-    await insertRows(dataset, "metadata", metaRows);
-  }
-
-  if (priceRows.length > 0) {
-    console.log(`  Inserting ${priceRows.length} price rows to BigQuery ${dataset}.price_history...`);
-    await insertRows(dataset, "price_history", priceRows);
-  }
-}
-
 async function computeAndStoreSignals() {
   console.log("Computing indicators for all symbols...");
   const client = await pool.connect();
@@ -236,9 +193,6 @@ async function computeAndStoreSignals() {
     const symbolsResult = await client.query(`SELECT DISTINCT symbol FROM price_history`);
     const symbols = symbolsResult.rows.map(r => r.symbol);
     let processed = 0;
-
-    const bqStockSignals: any[] = [];
-    const bqCryptoSignals: any[] = [];
 
     for (const symbol of symbols) {
       const barsResult = await client.query(
@@ -288,45 +242,12 @@ async function computeAndStoreSignals() {
         ]
       );
 
-      const signalRow = {
-        symbol,
-        name: meta.name,
-        exchange: meta.exchange,
-        sector: meta.sector || "",
-        asset_type: meta.asset_type,
-        price: last.price,
-        change_val: changeVal,
-        change_percent: changePct,
-        signal,
-        macd_histogram: last.macdHistogram,
-        macd_histogram_adjusted: last.macdHistogramAdjusted,
-        rsi: last.rsi,
-        signal_strength: signalStrengthVal,
-        last_signal_change: lastChange,
-        signal_changes: signalChangesVal,
-        data_points: bars.length,
-        volume: bars[bars.length - 1].volume,
-        computed_at: new Date().toISOString(),
-      };
-
-      if (meta.asset_type === "crypto") bqCryptoSignals.push(signalRow);
-      else bqStockSignals.push(signalRow);
-
       processed++;
       if (processed % 200 === 0) {
         console.log(`  Computed signals for ${processed}/${symbols.length} symbols`);
       }
     }
     console.log(`Computed signals for ${processed} symbols total`);
-
-    if (bqStockSignals.length > 0) {
-      console.log(`  Writing ${bqStockSignals.length} stock signals to BigQuery...`);
-      await insertRows(STOCKS_DATASET, "computed_signals", bqStockSignals);
-    }
-    if (bqCryptoSignals.length > 0) {
-      console.log(`  Writing ${bqCryptoSignals.length} crypto signals to BigQuery...`);
-      await insertRows(CRYPTO_DATASET, "computed_signals", bqCryptoSignals);
-    }
   } finally {
     client.release();
   }
@@ -337,17 +258,10 @@ function sleep(ms: number) {
 }
 
 async function main() {
-  console.log("=== Market Data Seed ===");
-  console.log(`Primary store: BigQuery (project: ${PROJECT_ID})`);
-  console.log(`PostgreSQL write: ${ALSO_WRITE_POSTGRES ? "enabled" : "disabled"}`);
+  console.log("=== Market Data Seed (PostgreSQL) ===");
 
   console.log("Initializing PostgreSQL...");
   await initDB();
-
-  console.log("Initializing BigQuery tables...");
-  console.log("Dropping and recreating BigQuery tables for fresh seed...");
-  await dropAndRecreateTables();
-  console.log("BigQuery tables ready");
 
   const endDate = new Date().toISOString().split("T")[0];
   const stockStartDate = "2016-01-01";
@@ -372,22 +286,15 @@ async function main() {
       const bars = await fetchAlpacaBars(chunk, stockStartDate, endDate);
       const barCount = Object.values(bars).reduce((s, b) => s + b.length, 0);
 
-      try {
-        await storePriceDataBigQuery(bars, STOCKS_DATASET, assetMeta);
-        console.log(`  Stored ${Object.keys(bars).length} symbols (${barCount} bars) to BigQuery`);
-      } catch (err: any) {
-        console.error(`  BigQuery write error: ${err.message}`);
-      }
-
-      if (ALSO_WRITE_POSTGRES) {
-        await storePriceDataPostgres(bars, "stock", assetMeta);
-      }
+      await storePriceData(bars, "stock", assetMeta);
+      console.log(`  Stored ${Object.keys(bars).length} symbols (${barCount} bars)`);
 
       totalStored += Object.keys(bars).length;
 
       if (global.gc) global.gc();
       await sleep(500);
     }
+    console.log(`Total stocks stored: ${totalStored}`);
   } else {
     console.log("No Alpaca API keys configured - skipping stock data");
   }
@@ -396,16 +303,8 @@ async function main() {
     const cryptoBars = await fetchTiingoCrypto();
     const cryptoMeta = new Map(Object.keys(cryptoBars).map(s => [s, { name: s, exchange: "CRYPTO" }]));
 
-    try {
-      await storePriceDataBigQuery(cryptoBars, CRYPTO_DATASET, cryptoMeta);
-      console.log(`Stored ${Object.keys(cryptoBars).length} crypto symbols to BigQuery`);
-    } catch (err: any) {
-      console.error(`  BigQuery write error: ${err.message}`);
-    }
-
-    if (ALSO_WRITE_POSTGRES) {
-      await storePriceDataPostgres(cryptoBars, "crypto", cryptoMeta);
-    }
+    await storePriceData(cryptoBars, "crypto", cryptoMeta);
+    console.log(`Stored ${Object.keys(cryptoBars).length} crypto symbols`);
   } else {
     console.log("No Tiingo token configured - skipping crypto data");
   }
