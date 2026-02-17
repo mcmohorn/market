@@ -3,6 +3,7 @@ import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
 import routes from "./routes";
+import { initDB } from "./db";
 
 const app = express();
 const PORT = parseInt(process.env.PORT || "5000");
@@ -19,6 +20,11 @@ app.get("*", (_req, res) => {
   res.sendFile(path.join(distPath, "index.html"));
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port ${PORT}`);
+initDB().then(() => {
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}).catch(err => {
+  console.error("Failed to initialize database:", err);
+  process.exit(1);
 });

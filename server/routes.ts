@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { queryBigQuery, getDataset, tbl, normalizeDate } from "./bigquery";
+import { pool } from "./db";
 import type { StockBar, SimulationRequest, CompareRequest, MarketConditionsRequest, DEFAULT_STRATEGY } from "../shared/types";
 import { analyzeStock, getSignal, getSignalStrength, countSignalChanges, lastSignalChangeDate } from "../shared/indicators";
 import { runSimulation, compareStrategies, analyzeMarketConditions } from "./simulation";
@@ -32,38 +32,36 @@ function getAssetTypeFilter(assetType: string | undefined): string {
 }
 
 async function computeSignalsAsOfDate(assetFilter: string, asOfDate: string, signalFilter?: string, searchFilter?: string, sortCol?: string, sortOrder?: string, lim?: number, off?: number, sectorFilter?: string) {
-  const ds = getDataset(assetFilter);
-  const priceTable = tbl(ds, "price_history");
-  const metaTable = tbl(ds, "metadata");
-
-  const symbolsRows = await queryBigQuery(
-    `SELECT DISTINCT ph.symbol, m.name, m.exchange, m.sector
-     FROM ${priceTable} ph
-     LEFT JOIN ${metaTable} m ON m.symbol = ph.symbol
-     ORDER BY ph.symbol`
+  const symbolsRows = await pool.query(
+    `SELECT DISTINCT ph.symbol, s.name, s.exchange, s.sector
+     FROM price_history ph
+     LEFT JOIN stocks s ON s.symbol = ph.symbol AND s.asset_type = ph.asset_type
+     WHERE ph.asset_type = $1
+     ORDER BY ph.symbol`,
+    [assetFilter]
   );
 
-  const allResults: any[] = [];
-
-  const allPriceRows = await queryBigQuery(
+  const allPriceRows = await pool.query(
     `SELECT symbol, date, open, high, low, close, volume
-     FROM ${priceTable}
-     WHERE date <= @asOfDate
+     FROM price_history
+     WHERE asset_type = $1 AND date <= $2
      ORDER BY symbol, date ASC`,
-    { asOfDate }
+    [assetFilter, asOfDate]
   );
 
   const bySymbol = new Map<string, any[]>();
-  for (const r of allPriceRows) {
+  for (const r of allPriceRows.rows) {
     const sym = r.symbol;
     if (!bySymbol.has(sym)) bySymbol.set(sym, []);
     bySymbol.get(sym)!.push(r);
   }
 
   const metaMap = new Map<string, any>();
-  for (const row of symbolsRows) {
+  for (const row of symbolsRows.rows) {
     metaMap.set(row.symbol, row);
   }
+
+  const allResults: any[] = [];
 
   for (const [sym, priceRows] of bySymbol.entries()) {
     if (priceRows.length < 2) continue;
@@ -75,7 +73,7 @@ async function computeSignalsAsOfDate(assetFilter: string, asOfDate: string, sig
         !(meta.name || "").toLowerCase().includes(searchFilter.toLowerCase())) continue;
 
     const bars: StockBar[] = priceRows.map((r: any) => ({
-      date: normalizeDate(r.date),
+      date: r.date instanceof Date ? r.date.toISOString().split("T")[0] : String(r.date).split("T")[0],
       open: parseFloat(r.open),
       high: parseFloat(r.high),
       low: parseFloat(r.low),
@@ -135,23 +133,23 @@ async function computeSignalsAsOfDate(assetFilter: string, asOfDate: string, sig
 router.get("/api/stocks/signal-alerts", async (req, res) => {
   try {
     const assetFilter = getAssetTypeFilter(req.query.asset_type as string);
-    const ds = getDataset(assetFilter);
-    const signalsTable = tbl(ds, "computed_signals");
 
-    const rows = await queryBigQuery(
+    const result = await pool.query(
       `SELECT symbol, name, exchange, sector, signal, price, change_percent,
               last_signal_change, signal_changes, data_points
-       FROM ${signalsTable}
-       WHERE last_signal_change IS NOT NULL
+       FROM computed_signals
+       WHERE asset_type = $1
+         AND last_signal_change IS NOT NULL
          AND last_signal_change != ''
          AND signal_changes > 0
          AND data_points >= 60
        ORDER BY last_signal_change DESC
-       LIMIT 200`
+       LIMIT 200`,
+      [assetFilter]
     );
 
     const now = new Date();
-    const alerts = rows
+    const alerts = result.rows
       .map((row: any) => {
         const lastChangeDate = new Date(row.last_signal_change);
         const daysSinceChange = Math.max(1, Math.floor((now.getTime() - lastChangeDate.getTime()) / (1000 * 60 * 60 * 24)));
@@ -188,15 +186,14 @@ router.get("/api/stocks/signal-alerts", async (req, res) => {
 router.get("/api/sectors", async (req, res) => {
   try {
     const assetFilter = getAssetTypeFilter(req.query.asset_type as string);
-    const ds = getDataset(assetFilter);
-    const metaTable = tbl(ds, "metadata");
 
-    const rows = await queryBigQuery(
-      `SELECT DISTINCT sector FROM ${metaTable}
-       WHERE sector IS NOT NULL AND sector != ''
-       ORDER BY sector`
+    const result = await pool.query(
+      `SELECT DISTINCT sector FROM stocks
+       WHERE asset_type = $1 AND sector IS NOT NULL AND sector != ''
+       ORDER BY sector`,
+      [assetFilter]
     );
-    res.json(rows.map(r => r.sector));
+    res.json(result.rows.map(r => r.sector));
   } catch (err) {
     console.error("Error fetching sectors:", err);
     res.status(500).json({ error: "Failed to fetch sectors" });
@@ -225,28 +222,29 @@ router.get("/api/stocks", async (req, res) => {
       return res.json(result);
     }
 
-    const ds = getDataset(assetFilter);
-    const signalsTable = tbl(ds, "computed_signals");
-
-    let whereClauses: string[] = [];
-    const params: any = {};
+    let whereClauses: string[] = ["asset_type = $1"];
+    const params: any[] = [assetFilter];
+    let paramIdx = 2;
 
     if (signal && signal !== "ALL") {
-      whereClauses.push(`signal = @signal`);
-      params.signal = signal;
+      whereClauses.push(`signal = $${paramIdx}`);
+      params.push(signal);
+      paramIdx++;
     }
 
     if (search) {
-      whereClauses.push(`(LOWER(symbol) LIKE LOWER(@search) OR LOWER(name) LIKE LOWER(@search))`);
-      params.search = `%${search}%`;
+      whereClauses.push(`(symbol ILIKE $${paramIdx} OR name ILIKE $${paramIdx})`);
+      params.push(`%${search}%`);
+      paramIdx++;
     }
 
     if (sector && sector !== "ALL") {
-      whereClauses.push(`sector = @sector`);
-      params.sector = sector;
+      whereClauses.push(`sector = $${paramIdx}`);
+      params.push(sector);
+      paramIdx++;
     }
 
-    const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+    const whereStr = `WHERE ${whereClauses.join(" AND ")}`;
 
     const sortColMap: Record<string, string> = {
       symbol: "symbol", name: "name", price: "price",
@@ -258,18 +256,18 @@ router.get("/api/stocks", async (req, res) => {
     const safeSort = sortColMap[(sort as string) || "change_percent"] || "change_percent";
     const sortOrder = (order as string) === "asc" ? "ASC" : "DESC";
 
-    const dataRows = await queryBigQuery(
-      `SELECT * FROM ${signalsTable} ${whereStr} ORDER BY ${safeSort} ${sortOrder} LIMIT @lim OFFSET @off`,
-      { ...params, lim, off }
+    const dataResult = await pool.query(
+      `SELECT * FROM computed_signals ${whereStr} ORDER BY ${safeSort} ${sortOrder} LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
+      [...params, lim, off]
     );
 
-    const countRows = await queryBigQuery(
-      `SELECT COUNT(*) as total FROM ${signalsTable} ${whereStr}`,
+    const countResult = await pool.query(
+      `SELECT COUNT(*) as total FROM computed_signals ${whereStr}`,
       params
     );
 
     res.json({
-      data: dataRows.map(row => ({
+      data: dataResult.rows.map(row => ({
         symbol: row.symbol,
         name: row.name,
         exchange: row.exchange,
@@ -287,7 +285,7 @@ router.get("/api/stocks", async (req, res) => {
         dataPoints: row.data_points,
         volume: row.volume,
       })),
-      total: parseInt(countRows[0].total),
+      total: parseInt(countResult.rows[0].total),
     });
   } catch (err) {
     console.error("Error fetching stocks:", err);
@@ -328,17 +326,17 @@ router.get("/api/stocks/top-performers", async (req, res) => {
       });
     }
 
-    const ds = getDataset(assetFilter);
-    const signalsTable = tbl(ds, "computed_signals");
-
-    const gainers = await queryBigQuery(
-      `SELECT * FROM ${signalsTable} ORDER BY change_percent DESC LIMIT 10`
+    const gainers = await pool.query(
+      `SELECT * FROM computed_signals WHERE asset_type = $1 ORDER BY change_percent DESC LIMIT 10`,
+      [assetFilter]
     );
-    const losers = await queryBigQuery(
-      `SELECT * FROM ${signalsTable} ORDER BY change_percent ASC LIMIT 10`
+    const losers = await pool.query(
+      `SELECT * FROM computed_signals WHERE asset_type = $1 ORDER BY change_percent ASC LIMIT 10`,
+      [assetFilter]
     );
-    const strongBuys = await queryBigQuery(
-      `SELECT * FROM ${signalsTable} WHERE signal = 'BUY' ORDER BY signal_strength DESC LIMIT 10`
+    const strongBuys = await pool.query(
+      `SELECT * FROM computed_signals WHERE asset_type = $1 AND signal = 'BUY' ORDER BY signal_strength DESC LIMIT 10`,
+      [assetFilter]
     );
 
     const mapRow = (row: any) => ({
@@ -351,9 +349,9 @@ router.get("/api/stocks/top-performers", async (req, res) => {
     });
 
     res.json({
-      gainers: gainers.map(mapRow),
-      losers: losers.map(mapRow),
-      strongBuys: strongBuys.map(mapRow),
+      gainers: gainers.rows.map(mapRow),
+      losers: losers.rows.map(mapRow),
+      strongBuys: strongBuys.rows.map(mapRow),
     });
   } catch (err) {
     console.error("Error fetching top performers:", err);
@@ -366,31 +364,27 @@ router.get("/api/stocks/:symbol", async (req, res) => {
     const { symbol } = req.params;
     const upperSymbol = symbol.toUpperCase();
 
-    const stockRows = await queryBigQuery(
-      `SELECT * FROM ${tbl("stocks", "computed_signals")} WHERE symbol = @symbol
-       UNION ALL
-       SELECT * FROM ${tbl("crypto", "computed_signals")} WHERE symbol = @symbol
-       LIMIT 1`,
-      { symbol: upperSymbol }
+    const stockResult = await pool.query(
+      `SELECT * FROM computed_signals WHERE symbol = $1 LIMIT 1`,
+      [upperSymbol]
     );
 
-    if (stockRows.length === 0) {
+    if (stockResult.rows.length === 0) {
       return res.status(404).json({ error: "Stock not found" });
     }
 
-    const stock = stockRows[0];
-    const ds = stock.asset_type === "crypto" ? "crypto" : "stocks";
+    const stock = stockResult.rows[0];
 
-    const priceRows = await queryBigQuery(
+    const priceResult = await pool.query(
       `SELECT date, open, high, low, close, volume
-       FROM ${tbl(ds, "price_history")}
-       WHERE symbol = @symbol
+       FROM price_history
+       WHERE symbol = $1 AND asset_type = $2
        ORDER BY date ASC`,
-      { symbol: upperSymbol }
+      [upperSymbol, stock.asset_type]
     );
 
-    const bars: StockBar[] = priceRows.map(row => ({
-      date: normalizeDate(row.date),
+    const bars: StockBar[] = priceResult.rows.map(row => ({
+      date: row.date instanceof Date ? row.date.toISOString().split("T")[0] : String(row.date).split("T")[0],
       open: parseFloat(row.open),
       high: parseFloat(row.high),
       low: parseFloat(row.low),
@@ -434,26 +428,26 @@ router.get("/api/stocks/:symbol", async (req, res) => {
 router.get("/api/stats", async (req, res) => {
   try {
     const assetFilter = getAssetTypeFilter(req.query.asset_type as string);
-    const ds = getDataset(assetFilter);
-    const signalsTable = tbl(ds, "computed_signals");
 
-    const rows = await queryBigQuery(
+    const result = await pool.query(
       `SELECT
         COUNT(*) as total,
-        COUNTIF(signal = 'BUY') as buys,
-        COUNTIF(signal = 'SELL') as sells,
-        COUNTIF(signal = 'HOLD') as holds,
+        COUNT(*) FILTER (WHERE signal = 'BUY') as buys,
+        COUNT(*) FILTER (WHERE signal = 'SELL') as sells,
+        COUNT(*) FILTER (WHERE signal = 'HOLD') as holds,
         MAX(computed_at) as last_update
-       FROM ${signalsTable}`
+       FROM computed_signals
+       WHERE asset_type = $1`,
+      [assetFilter]
     );
 
-    const row = rows[0];
+    const row = result.rows[0];
     res.json({
       total: parseInt(row.total),
       buys: parseInt(row.buys),
       sells: parseInt(row.sells),
       holds: parseInt(row.holds),
-      lastUpdate: row.last_update?.value || row.last_update || null,
+      lastUpdate: row.last_update || null,
     });
   } catch (err) {
     console.error("Error fetching stats:", err);
@@ -464,12 +458,12 @@ router.get("/api/stats", async (req, res) => {
 router.get("/api/symbols", async (req, res) => {
   try {
     const assetFilter = getAssetTypeFilter(req.query.asset_type as string);
-    const ds = getDataset(assetFilter);
 
-    const rows = await queryBigQuery(
-      `SELECT DISTINCT symbol FROM ${tbl(ds, "price_history")} ORDER BY symbol`
+    const result = await pool.query(
+      `SELECT DISTINCT symbol FROM price_history WHERE asset_type = $1 ORDER BY symbol`,
+      [assetFilter]
     );
-    res.json(rows.map(r => r.symbol));
+    res.json(result.rows.map(r => r.symbol));
   } catch (err) {
     console.error("Error fetching symbols:", err);
     res.status(500).json({ error: "Failed to fetch symbols" });
@@ -479,16 +473,22 @@ router.get("/api/symbols", async (req, res) => {
 router.get("/api/data-range", async (req, res) => {
   try {
     const assetFilter = getAssetTypeFilter(req.query.asset_type as string);
-    const ds = getDataset(assetFilter);
 
-    const rows = await queryBigQuery(
+    const result = await pool.query(
       `SELECT MIN(date) as min_date, MAX(date) as max_date, COUNT(DISTINCT symbol) as symbol_count, COUNT(*) as total_bars
-       FROM ${tbl(ds, "price_history")}`
+       FROM price_history
+       WHERE asset_type = $1`,
+      [assetFilter]
     );
-    const row = rows[0];
+    const row = result.rows[0];
+    const formatDate = (d: any) => {
+      if (!d) return "";
+      if (d instanceof Date) return d.toISOString().split("T")[0];
+      return String(d).split("T")[0];
+    };
     res.json({
-      minDate: normalizeDate(row.min_date),
-      maxDate: normalizeDate(row.max_date),
+      minDate: formatDate(row.min_date),
+      maxDate: formatDate(row.max_date),
       symbolCount: parseInt(row.symbol_count),
       totalBars: parseInt(row.total_bars),
     });

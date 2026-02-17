@@ -58,6 +58,9 @@ export async function initDB() {
 
       CREATE INDEX IF NOT EXISTS idx_computed_signals_signal ON computed_signals(signal);
       CREATE INDEX IF NOT EXISTS idx_computed_signals_change ON computed_signals(change_percent);
+      CREATE INDEX IF NOT EXISTS idx_computed_signals_asset ON computed_signals(asset_type);
+      CREATE INDEX IF NOT EXISTS idx_price_history_asset_date ON price_history(asset_type, date);
+      CREATE INDEX IF NOT EXISTS idx_price_history_symbol_asset_date ON price_history(symbol, asset_type, date);
     `);
     console.log("Database tables initialized");
   } finally {
