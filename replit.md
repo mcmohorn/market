@@ -158,6 +158,27 @@ Seed data: `npx tsx server/seed.ts` (requires API keys + optionally BigQuery cre
   - Click DATE or P&L headers to sort ascending/descending
   - Click equity curve chart to jump trade log to that date
   - Auto-expands and scrolls to nearest trade with green highlight
+- 2026-02-17: Added simulation settings: maxTradesPerDay, minHoldDays, useEndOfDayPrices
+  - maxTradesPerDay (default 10): Limits total buys + sells per trading day; 0 = unlimited
+  - minHoldDays (default 0): Minimum days to hold a position before selling (stop-loss still triggers)
+  - useEndOfDayPrices (default true): When unchecked, uses open prices for trade execution instead of close
+  - UI controls: slider for max trades/day (0-50), slider for min hold days (0-90), checkbox for EOD prices
+- 2026-02-17: BigQuery table optimization with partitioning and clustering
+  - price_history tables: PARTITION BY date, CLUSTER BY symbol (both stocks and crypto datasets)
+  - computed_signals tables: PARTITION BY DATE(computed_at), CLUSTER BY symbol
+  - Reduces query costs (BigQuery only scans relevant partitions) and improves performance for date-filtered queries
+  - optimize-bigquery.ts script for re-partitioning (creates new table, copies, swaps)
+- 2026-02-17: Benchmark results - BigQuery vs PostgreSQL
+  - PostgreSQL is 10-15x faster for large full-table scans (loading all price data for simulation)
+  - BigQuery is comparable for small targeted queries (single symbol, aggregations)
+  - For simulation workloads (which do large date-range scans): PostgreSQL wins significantly
+  - Recommendation: Use PostgreSQL for simulation queries, BigQuery for analytics/warehouse
+  - Single symbol (AAPL 5yr): PG 89ms vs BQ 1337ms
+  - 10 symbols (3yr): PG 1224ms vs BQ 1204ms (tie)
+  - All symbols (1yr): PG 7984ms vs BQ 90220ms
+  - All symbols (6mo): PG 2417ms vs BQ 26663ms
+  - Crypto (BTC+ETH): PG 37ms vs BQ 2733ms
+  - Aggregation: PG 3085ms vs BQ 1494ms (BQ wins)
 - 2026-02-14: Removed PostgreSQL runtime dependency - BigQuery is now the only data store
   - All API endpoints (routes.ts) now query BigQuery directly using parameterized queries
   - Simulation engine (simulation.ts) loads price data from BigQuery

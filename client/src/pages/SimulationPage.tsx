@@ -23,6 +23,9 @@ const DEFAULT_PARAMS: StrategyParams = {
   takeProfitPct: 20,
   preferNewBuys: false,
   newBuyLookbackDays: 5,
+  maxTradesPerDay: 10,
+  minHoldDays: 0,
+  useEndOfDayPrices: true,
 };
 
 type Tab = "simulate" | "compare" | "conditions";
@@ -313,6 +316,59 @@ export default function SimulationPage({ assetType }: SimulationPageProps) {
                       Buy within this many days of a signal flip. Lower = more selective.
                     </span>
                   </label>
+                )}
+
+                <label className="block">
+                  <span className="text-cyber-muted text-xs font-mono flex justify-between">
+                    <span>Max Trades/Day</span>
+                    <span className="text-cyber-green">{params.maxTradesPerDay === 0 ? "∞" : params.maxTradesPerDay}</span>
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={50}
+                    value={params.maxTradesPerDay}
+                    onChange={e => updateParam("maxTradesPerDay", Number(e.target.value))}
+                    className="w-full accent-[#00ff41] h-1"
+                  />
+                  <span className="text-cyber-muted text-[10px] font-mono block mt-1">
+                    Limit buys + sells per day. 0 = unlimited.
+                  </span>
+                </label>
+
+                <label className="block">
+                  <span className="text-cyber-muted text-xs font-mono flex justify-between">
+                    <span>Min Hold Days</span>
+                    <span className="text-cyber-green">{params.minHoldDays}</span>
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={90}
+                    value={params.minHoldDays}
+                    onChange={e => updateParam("minHoldDays", Number(e.target.value))}
+                    className="w-full accent-[#00ff41] h-1"
+                  />
+                  <span className="text-cyber-muted text-[10px] font-mono block mt-1">
+                    Hold positions at least this many days before selling (stop-loss still triggers).
+                  </span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={params.useEndOfDayPrices}
+                    onChange={e => setParams(p => ({ ...p, useEndOfDayPrices: e.target.checked }))}
+                    className="accent-[#00ff41] w-4 h-4"
+                  />
+                  <span className="text-cyber-muted text-xs font-mono group-hover:text-cyber-green transition-colors">
+                    Use End-of-Day Prices
+                  </span>
+                </label>
+                {!params.useEndOfDayPrices && (
+                  <span className="text-cyber-muted text-[10px] font-mono block pl-6 -mt-1">
+                    Uses open prices for execution instead of close prices.
+                  </span>
                 )}
 
                 {([

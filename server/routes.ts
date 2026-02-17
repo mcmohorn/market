@@ -19,6 +19,9 @@ const defaultStrategy = {
   takeProfitPct: 20,
   preferNewBuys: false,
   newBuyLookbackDays: 5,
+  maxTradesPerDay: 10,
+  minHoldDays: 0,
+  useEndOfDayPrices: true,
 };
 
 const router = Router();

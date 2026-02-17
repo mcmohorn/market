@@ -75,6 +75,9 @@ export interface StrategyParams {
   takeProfitPct: number;
   preferNewBuys: boolean;
   newBuyLookbackDays: number;
+  maxTradesPerDay: number;
+  minHoldDays: number;
+  useEndOfDayPrices: boolean;
 }
 
 export const DEFAULT_STRATEGY: StrategyParams = {
@@ -92,6 +95,9 @@ export const DEFAULT_STRATEGY: StrategyParams = {
   takeProfitPct: 20,
   preferNewBuys: false,
   newBuyLookbackDays: 5,
+  maxTradesPerDay: 10,
+  minHoldDays: 0,
+  useEndOfDayPrices: true,
 };
 
 export interface TradeRecord {

@@ -194,9 +194,11 @@ export async function runSimulation(
   let maxDrawdownPct = 0;
 
   const signalHistory: Map<string, { lastSignal: boolean; lastChangeDay: number; changeCount: number }> = new Map();
+  const positionBuyDate: Map<string, string> = new Map();
 
   for (let dayIdx = 0; dayIdx < sortedDates.length; dayIdx++) {
     const date = sortedDates[dayIdx];
+    let tradesToday = 0;
 
     const candidates: { symbol: string; bar: StockBar; indicator: IndicatorData; diffAdjusted: number; newBuyScore: number }[] = [];
 
@@ -241,11 +243,22 @@ export async function runSimulation(
 
     for (const [sym, pos] of positions.entries()) {
       if (pos.quantity <= 0) continue;
+      if (params.maxTradesPerDay > 0 && tradesToday >= params.maxTradesPerDay) break;
       const cand = candidates.find(c => c.symbol === sym);
       if (!cand) continue;
 
-      const currentPrice = cand.bar.close;
+      const currentPrice = params.useEndOfDayPrices ? cand.bar.close : cand.bar.open;
       const pnlPct = ((currentPrice - pos.avgCost) / pos.avgCost) * 100;
+
+      const buyDate = positionBuyDate.get(sym);
+      if (params.minHoldDays > 0 && buyDate) {
+        const buyMs = new Date(buyDate).getTime();
+        const nowMs = new Date(date).getTime();
+        const daysHeld = Math.floor((nowMs - buyMs) / (1000 * 60 * 60 * 24));
+        if (daysHeld < params.minHoldDays) {
+          if (pnlPct > -params.stopLossPct) continue;
+        }
+      }
 
       let shouldSell = false;
       let reason = "";
@@ -278,6 +291,8 @@ export async function runSimulation(
           pnlPct: Math.round(pnlPctVal * 100) / 100,
         });
         positions.delete(sym);
+        positionBuyDate.delete(sym);
+        tradesToday++;
       }
     }
 
@@ -292,6 +307,7 @@ export async function runSimulation(
 
     for (const cand of candidates) {
       if (cash <= params.minCashReserve) break;
+      if (params.maxTradesPerDay > 0 && tradesToday >= params.maxTradesPerDay) break;
       if (positions.has(cand.symbol)) continue;
       if (cand.bar.close > params.maxSharePrice) continue;
       if (cand.bar.close <= 0) continue;
@@ -306,16 +322,20 @@ export async function runSimulation(
       const available = Math.min(cash - params.minCashReserve, maxAllocation);
       if (available <= 0) continue;
 
-      const quantity = Math.floor(available / cand.bar.close);
+      const execPrice = params.useEndOfDayPrices ? cand.bar.close : cand.bar.open;
+      if (execPrice <= 0) continue;
+
+      const quantity = Math.floor(available / execPrice);
       if (quantity <= 0) continue;
 
-      const total = quantity * cand.bar.close;
+      const total = quantity * execPrice;
       cash -= total;
 
       positions.set(cand.symbol, {
         quantity,
-        avgCost: cand.bar.close,
+        avgCost: execPrice,
       });
+      positionBuyDate.set(cand.symbol, date);
 
       const reasonParts = [`MACD buy signal (adj: ${(cand.indicator.macdHistogramAdjusted * 10000).toFixed(2)}, RSI: ${cand.indicator.rsi.toFixed(1)})`];
       if (params.preferNewBuys && cand.newBuyScore > 0) {
@@ -324,9 +344,10 @@ export async function runSimulation(
 
       trades.push({
         date, symbol: cand.symbol, action: "BUY",
-        quantity, price: cand.bar.close, total,
+        quantity, price: execPrice, total,
         reason: reasonParts.join(" | "),
       });
+      tradesToday++;
     }
 
     let positionsValue = 0;
