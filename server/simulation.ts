@@ -171,7 +171,12 @@ export async function runSimulation(
   assetType?: string,
   exchange?: string
 ): Promise<SimulationResult> {
-  const allData = await loadPriceData(symbols, startDate, endDate, assetType, exchange);
+  const warmupDays = Math.max(params.macdSlowPeriod, params.rsiPeriod, 30) * 3;
+  const warmupDate = new Date(startDate);
+  warmupDate.setDate(warmupDate.getDate() - warmupDays);
+  const warmupStartDate = warmupDate.toISOString().split("T")[0];
+
+  const allData = await loadPriceData(symbols, warmupStartDate, endDate, assetType, exchange);
 
   if (allData.length === 0) {
     throw new Error("No price data found for the given date range and symbols");
@@ -184,10 +189,16 @@ export async function runSimulation(
   const allDates = new Set<string>();
   for (const sd of allData) {
     for (const bar of sd.bars) {
-      allDates.add(bar.date);
+      if (bar.date >= startDate) {
+        allDates.add(bar.date);
+      }
     }
   }
   const sortedDates = Array.from(allDates).sort();
+
+  if (sortedDates.length === 0) {
+    throw new Error("No trading days found in the requested date range");
+  }
 
   let cash = initialCapital;
   const positions: Map<string, { quantity: number; avgCost: number }> = new Map();
