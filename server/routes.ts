@@ -588,7 +588,6 @@ router.get("/api/news", async (req, res) => {
       sector: sector as string,
       source: source as string,
       limit: limit ? parseInt(limit as string) : 50,
-      hoursAgo: 48,
     });
     res.json(news);
   } catch (err: any) {

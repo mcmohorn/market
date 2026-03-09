@@ -49,17 +49,49 @@ function classifyPost(title: string, subreddit: string): { sector: string; asset
   return { sector, assetType, symbols };
 }
 
-async function fetchSubreddit(subreddit: string, sort: string = "hot", limit: number = 25): Promise<any[]> {
+async function fetchSubredditPullPush(subreddit: string, limit: number = 50): Promise<any[]> {
   try {
-    const url = `https://www.reddit.com/r/${subreddit}/${sort}.json?limit=${limit}&raw_json=1`;
+    const url = `https://api.pullpush.io/reddit/search/submission/?subreddit=${subreddit}&sort=score&sort_type=desc&size=${limit}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
     const res = await fetch(url, {
-      headers: {
-        "User-Agent": "MATEO-MarketTerminal/1.0",
-      },
+      headers: { "User-Agent": "MATEO-MarketTerminal/1.0" },
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      console.log(`PullPush returned ${res.status} for r/${subreddit}`);
+      return [];
+    }
+    const data = await res.json();
+    return data?.data || [];
+  } catch (err: any) {
+    console.log(`PullPush fetch failed for r/${subreddit}: ${err.message}`);
+    return [];
+  }
+}
+
+async function fetchSubredditReddit(subreddit: string, limit: number = 25): Promise<any[]> {
+  try {
+    const url = `https://www.reddit.com/r/${subreddit}/hot.json?limit=${limit}&raw_json=1`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const res = await fetch(url, {
+      headers: { "User-Agent": "MATEO-MarketTerminal/1.0" },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
     if (!res.ok) return [];
     const data = await res.json();
-    return data?.data?.children?.map((c: any) => c.data) || [];
+    return (data?.data?.children || []).map((c: any) => ({
+      ...c.data,
+      num_comments: c.data.num_comments || 0,
+      score: c.data.score || 0,
+    }));
   } catch {
     return [];
   }
@@ -69,15 +101,27 @@ export async function scrapeAndCacheNews(): Promise<number> {
   let totalInserted = 0;
 
   for (const sub of SUBREDDITS) {
-    const posts = await fetchSubreddit(sub.name, "hot", 25);
+    let posts = await fetchSubredditReddit(sub.name, 25);
+
+    if (posts.length === 0) {
+      console.log(`Reddit blocked for r/${sub.name}, falling back to PullPush...`);
+      posts = await fetchSubredditPullPush(sub.name, 50);
+    }
+
+    console.log(`r/${sub.name}: fetched ${posts.length} posts`);
 
     for (const post of posts) {
-      if (post.stickied || post.is_self === false && !post.url) continue;
+      if (post.stickied) continue;
+      const title = post.title;
+      if (!title) continue;
 
-      const { sector, assetType, symbols } = classifyPost(post.title, sub.name);
-      const url = post.permalink
-        ? `https://reddit.com${post.permalink}`
-        : post.url || "";
+      const { sector, assetType, symbols } = classifyPost(title, sub.name);
+      const permalink = post.permalink || "";
+      const url = permalink.startsWith("http")
+        ? permalink
+        : permalink
+          ? `https://reddit.com${permalink}`
+          : post.url || "";
 
       try {
         const insertResult = await pool.query(
@@ -88,19 +132,20 @@ export async function scrapeAndCacheNews(): Promise<number> {
           [
             "reddit",
             sub.name,
-            post.title,
+            title.slice(0, 500),
             url,
             post.author || "",
             post.score || 0,
             post.num_comments || 0,
-            post.link_flair_text || "",
+            post.link_flair_text || post.link_flair_richtext?.[0]?.t || "",
             sector,
             assetType,
             symbols.join(","),
           ]
         );
         if (insertResult.rowCount && insertResult.rowCount > 0) totalInserted++;
-      } catch {
+      } catch (err: any) {
+        console.log(`Insert error for "${title.slice(0, 40)}": ${err.message}`);
       }
     }
   }
@@ -131,9 +176,6 @@ export async function getNews(filters: {
     conditions.push(`subreddit = $${idx++}`);
     params.push(filters.source);
   }
-  if (filters.hoursAgo) {
-    conditions.push(`fetched_at > NOW() - INTERVAL '${filters.hoursAgo} hours'`);
-  }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   const limit = filters.limit || 50;
@@ -152,11 +194,11 @@ export async function getNewsSummary(): Promise<{
   mentionedSymbols: { symbol: string; count: number }[];
   sentiment: string;
 }> {
-  const last24h = await pool.query(
-    `SELECT * FROM market_news WHERE fetched_at > NOW() - INTERVAL '24 hours' ORDER BY score DESC`
+  const allNews = await pool.query(
+    `SELECT * FROM market_news ORDER BY score DESC LIMIT 200`
   );
 
-  const posts = last24h.rows;
+  const posts = allNews.rows;
   const subCounts: Record<string, number> = {};
   const symbolCounts: Record<string, number> = {};
 
@@ -187,11 +229,11 @@ export async function getNewsSummary(): Promise<{
 
   const bullish = posts.filter(p => {
     const t = p.title.toLowerCase();
-    return t.includes("bull") || t.includes("moon") || t.includes("buy") || t.includes("calls") || t.includes("rocket") || t.includes("squeeze");
+    return t.includes("bull") || t.includes("moon") || t.includes("buy") || t.includes("calls") || t.includes("rocket") || t.includes("squeeze") || t.includes("yolo") || t.includes("to the moon") || t.includes("gain");
   }).length;
   const bearish = posts.filter(p => {
     const t = p.title.toLowerCase();
-    return t.includes("bear") || t.includes("crash") || t.includes("sell") || t.includes("puts") || t.includes("short") || t.includes("dump");
+    return t.includes("bear") || t.includes("crash") || t.includes("sell") || t.includes("puts") || t.includes("short") || t.includes("dump") || t.includes("loss") || t.includes("recession");
   }).length;
 
   let sentiment = "NEUTRAL";
