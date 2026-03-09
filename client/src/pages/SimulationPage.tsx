@@ -3,6 +3,7 @@ import type { SimulationResult, StrategyParams, StrategyComparison, MarketCondit
 import { runSimulation, compareStrategies, analyzeMarketConditions } from "../lib/api";
 import EquityCurve from "../components/EquityCurve";
 import TradeLog from "../components/TradeLog";
+import SimulationSummary from "../components/SimulationSummary";
 import SimulationStats from "../components/SimulationStats";
 import StrategyComparisonView from "../components/StrategyComparisonView";
 import MarketConditionsView from "../components/MarketConditionsView";
@@ -506,6 +507,7 @@ export default function SimulationPage({ assetType }: SimulationPageProps) {
             <>
               <EquityCurve result={simResult} onDateClick={setTradeLogDate} />
               <TradeLog trades={simResult.trades} highlightDate={tradeLogDate} />
+              <SimulationSummary result={simResult} />
             </>
           )}
 

@@ -86,6 +86,29 @@ export default function TradeLog({ trades, highlightDate }: Props) {
     }
   }, [highlightDate, highlightIndex]);
 
+  const downloadCSV = () => {
+    const headers = ["Date", "Action", "Symbol", "Quantity", "Price", "Total", "P&L", "P&L %", "Reason"];
+    const rows = filteredAndSorted.map(t => [
+      t.date,
+      t.action,
+      t.symbol,
+      t.quantity,
+      t.price.toFixed(2),
+      t.total.toFixed(2),
+      t.action === "SELL" && t.pnl != null ? t.pnl.toFixed(2) : "",
+      t.action === "SELL" && t.pnlPct != null ? t.pnlPct.toFixed(2) : "",
+      `"${(t.reason || "").replace(/"/g, '""')}"`,
+    ]);
+    const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `mateo_tradelog_${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="border border-cyber-grid p-3">
       <div className="flex items-center justify-between mb-3">
@@ -105,14 +128,22 @@ export default function TradeLog({ trades, highlightDate }: Props) {
             <span className="text-[10px] font-mono text-yellow-500">sorted by P&L</span>
           )}
         </div>
-        {filteredAndSorted.length > 50 && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setExpanded(!expanded)}
-            className="text-cyber-muted text-xs font-mono hover:text-cyber-green"
+            onClick={downloadCSV}
+            className="px-3 py-1 text-[11px] font-mono uppercase tracking-wider border border-cyber-green/40 text-cyber-green hover:bg-cyber-green/10 transition-all"
           >
-            {expanded ? "Show Recent" : `Show All (${filteredAndSorted.length})`}
+            Export CSV
           </button>
-        )}
+          {filteredAndSorted.length > 50 && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="text-cyber-muted text-xs font-mono hover:text-cyber-green"
+            >
+              {expanded ? "Show Recent" : `Show All (${filteredAndSorted.length})`}
+            </button>
+          )}
+        </div>
       </div>
       <div ref={scrollRef} className="overflow-x-auto max-h-[400px] overflow-y-auto">
         <table className="w-full text-xs font-mono">
