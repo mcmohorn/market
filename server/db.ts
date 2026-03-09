@@ -59,6 +59,7 @@ export async function initDB() {
         computed_at TIMESTAMP DEFAULT NOW()
       );
 
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_computed_signals_symbol_asset ON computed_signals(symbol, asset_type);
       CREATE INDEX IF NOT EXISTS idx_computed_signals_signal ON computed_signals(signal);
       CREATE INDEX IF NOT EXISTS idx_computed_signals_change ON computed_signals(change_percent);
       CREATE INDEX IF NOT EXISTS idx_computed_signals_asset ON computed_signals(asset_type);
