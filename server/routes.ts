@@ -3,6 +3,8 @@ import { pool } from "./db";
 import type { StockBar, SimulationRequest, CompareRequest, MarketConditionsRequest, DEFAULT_STRATEGY } from "../shared/types";
 import { analyzeStock, getSignal, getSignalStrength, countSignalChanges, lastSignalChangeDate } from "../shared/indicators";
 import { runSimulation, compareStrategies, analyzeMarketConditions } from "./simulation";
+import { scrapeAndCacheNews, getNews, getNewsSummary } from "./news";
+import { generateDailyPredictions, evaluatePastPredictions, getRecap, getAlgorithmVersions, getCurrentAlgorithmVersion, createAlgorithmVersion } from "./predictions";
 
 const defaultStrategy = {
   macdFastPeriod: 12,
@@ -575,6 +577,100 @@ router.post("/api/simulation/market-conditions", async (req, res) => {
   } catch (err: any) {
     console.error("Market conditions error:", err);
     res.status(500).json({ error: err.message || "Market conditions analysis failed" });
+  }
+});
+
+router.get("/api/news", async (req, res) => {
+  try {
+    const { asset_type, sector, source, limit } = req.query;
+    const news = await getNews({
+      assetType: asset_type as string,
+      sector: sector as string,
+      source: source as string,
+      limit: limit ? parseInt(limit as string) : 50,
+      hoursAgo: 48,
+    });
+    res.json(news);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/api/news/refresh", async (_req, res) => {
+  try {
+    const count = await scrapeAndCacheNews();
+    res.json({ inserted: count, message: `Scraped ${count} posts` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/api/news/summary", async (_req, res) => {
+  try {
+    const summary = await getNewsSummary();
+    res.json(summary);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/api/predictions/recap/:type", async (req, res) => {
+  try {
+    const type = req.params.type as "daily" | "weekly" | "monthly";
+    if (!["daily", "weekly", "monthly"].includes(type)) {
+      return res.status(400).json({ error: "Type must be daily, weekly, or monthly" });
+    }
+    const recap = await getRecap(type);
+    res.json(recap);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/api/predictions/generate", async (_req, res) => {
+  try {
+    await evaluatePastPredictions();
+    const count = await generateDailyPredictions();
+    res.json({ generated: count });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/api/algorithm/versions", async (_req, res) => {
+  try {
+    const versions = await getAlgorithmVersions();
+    res.json(versions);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/api/algorithm/version", async (req, res) => {
+  try {
+    const { params, notes } = req.body;
+    const version = await createAlgorithmVersion(params, notes);
+    res.json({ version });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/api/paper-money/signals", async (req, res) => {
+  try {
+    const symbols = (req.query.symbols as string || "").split(",").filter(Boolean);
+    if (symbols.length === 0) return res.json([]);
+
+    const result = await pool.query(
+      `SELECT DISTINCT ON (symbol) symbol, asset_type, signal, price, change_percent, rsi, macd_histogram
+       FROM computed_signals
+       WHERE symbol = ANY($1)
+       ORDER BY symbol, computed_at DESC`,
+      [symbols]
+    );
+    res.json(result.rows);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 

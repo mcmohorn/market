@@ -6,9 +6,13 @@ import TopPerformers from "./components/TopPerformers";
 import StockGrid from "./components/StockGrid";
 import StockDetailModal from "./components/StockDetailModal";
 import StatsBar from "./components/StatsBar";
+import SellAlertBanner from "./components/SellAlertBanner";
 import SimulationPage from "./pages/SimulationPage";
+import RecapsPage from "./pages/RecapsPage";
+import PaperMoneyPage from "./pages/PaperMoneyPage";
+import MarketNewsPage from "./pages/MarketNewsPage";
 
-type View = "scanner" | "simulation";
+type View = "scanner" | "simulation" | "recaps" | "paper" | "news";
 export type TimeJump = "1d" | "1w" | "1m" | "3m" | "6m" | "1y" | "latest";
 
 export function getAsOfDate(jump: TimeJump): string | undefined {
@@ -63,8 +67,39 @@ export default function App() {
           >
             Simulation Lab
           </button>
+          <button
+            onClick={() => setView("paper")}
+            className={`px-5 py-2.5 text-xs font-mono uppercase tracking-widest transition-all border-b-2 ${
+              view === "paper"
+                ? "border-cyber-green text-cyber-green"
+                : "border-transparent text-cyber-muted hover:text-cyber-green/70"
+            }`}
+          >
+            Paper Money
+          </button>
+          <button
+            onClick={() => setView("news")}
+            className={`px-5 py-2.5 text-xs font-mono uppercase tracking-widest transition-all border-b-2 ${
+              view === "news"
+                ? "border-cyber-green text-cyber-green"
+                : "border-transparent text-cyber-muted hover:text-cyber-green/70"
+            }`}
+          >
+            Market News
+          </button>
+          <button
+            onClick={() => setView("recaps")}
+            className={`px-5 py-2.5 text-xs font-mono uppercase tracking-widest transition-all border-b-2 ${
+              view === "recaps"
+                ? "border-cyber-green text-cyber-green"
+                : "border-transparent text-cyber-muted hover:text-cyber-green/70"
+            }`}
+          >
+            Recaps
+          </button>
         </div>
       </nav>
+      <SellAlertBanner onGoToPaperMoney={() => setView("paper")} />
       <main className="max-w-[1920px] mx-auto px-4 py-4 space-y-4">
         {view === "scanner" && (
           <>
@@ -75,6 +110,9 @@ export default function App() {
           </>
         )}
         {view === "simulation" && <SimulationPage assetType={assetType} />}
+        {view === "paper" && <PaperMoneyPage assetType={assetType} />}
+        {view === "news" && <MarketNewsPage />}
+        {view === "recaps" && <RecapsPage />}
       </main>
       {selectedSymbol && (
         <StockDetailModal

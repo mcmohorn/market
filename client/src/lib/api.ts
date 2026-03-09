@@ -141,6 +141,18 @@ export async function compareStrategies(request: CompareRequest): Promise<Strate
   return res.json();
 }
 
+export async function fetchRecap(type: "daily" | "weekly" | "monthly"): Promise<any> {
+  const res = await fetch(`${BASE}/api/predictions/recap/${type}`);
+  if (!res.ok) throw new Error("Failed to fetch recap");
+  return res.json();
+}
+
+export async function fetchAlgorithmVersions(): Promise<any[]> {
+  const res = await fetch(`${BASE}/api/algorithm/versions`);
+  if (!res.ok) throw new Error("Failed to fetch algorithm versions");
+  return res.json();
+}
+
 export async function analyzeMarketConditions(request: MarketConditionsRequest): Promise<MarketConditionResult[]> {
   const res = await fetch(`${BASE}/api/simulation/market-conditions`, {
     method: "POST",
@@ -151,5 +163,59 @@ export async function analyzeMarketConditions(request: MarketConditionsRequest):
     const err = await res.json().catch(() => ({ error: "Analysis failed" }));
     throw new Error(err.error || "Analysis failed");
   }
+  return res.json();
+}
+
+export async function fetchNews(filters?: {
+  asset_type?: string;
+  sector?: string;
+  source?: string;
+  limit?: number;
+}): Promise<any[]> {
+  const qs = new URLSearchParams();
+  if (filters?.asset_type) qs.set("asset_type", filters.asset_type);
+  if (filters?.sector) qs.set("sector", filters.sector);
+  if (filters?.source) qs.set("source", filters.source);
+  if (filters?.limit) qs.set("limit", String(filters.limit));
+  const res = await fetch(`${BASE}/api/news?${qs.toString()}`);
+  if (!res.ok) throw new Error("Failed to fetch news");
+  return res.json();
+}
+
+export async function fetchNewsSummary(): Promise<{
+  totalPosts: number;
+  topSubreddits: { subreddit: string; count: number }[];
+  hotTopics: { title: string; score: number; subreddit: string; url: string }[];
+  mentionedSymbols: { symbol: string; count: number }[];
+  sentiment: string;
+}> {
+  const res = await fetch(`${BASE}/api/news/summary`);
+  if (!res.ok) throw new Error("Failed to fetch news summary");
+  return res.json();
+}
+
+export async function refreshNews(): Promise<{ inserted: number; message: string }> {
+  const res = await fetch(`${BASE}/api/news/refresh`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to refresh news");
+  return res.json();
+}
+
+export async function generatePredictions(): Promise<{ generated: number }> {
+  const res = await fetch(`${BASE}/api/predictions/generate`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to generate predictions");
+  return res.json();
+}
+
+export async function fetchPaperMoneySignals(symbols: string[]): Promise<{
+  symbol: string;
+  signal: string;
+  price: number;
+  change_percent: number;
+  rsi: number;
+  macd_histogram: number;
+}[]> {
+  if (symbols.length === 0) return [];
+  const res = await fetch(`${BASE}/api/paper-money/signals?symbols=${symbols.join(",")}`);
+  if (!res.ok) throw new Error("Failed to fetch paper money signals");
   return res.json();
 }

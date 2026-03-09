@@ -6,6 +6,9 @@ import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
 
+// server/routes.ts
+import { Router } from "express";
+
 // server/db.ts
 import pg from "pg";
 var pool = new pg.Pool({
@@ -65,15 +68,75 @@ async function initDB() {
 
       CREATE INDEX IF NOT EXISTS idx_computed_signals_signal ON computed_signals(signal);
       CREATE INDEX IF NOT EXISTS idx_computed_signals_change ON computed_signals(change_percent);
+      CREATE INDEX IF NOT EXISTS idx_computed_signals_asset ON computed_signals(asset_type);
+      CREATE INDEX IF NOT EXISTS idx_price_history_asset_date ON price_history(asset_type, date);
+      CREATE INDEX IF NOT EXISTS idx_price_history_symbol_asset_date ON price_history(symbol, asset_type, date);
+
+      CREATE TABLE IF NOT EXISTS predictions (
+        id SERIAL PRIMARY KEY,
+        symbol VARCHAR(20) NOT NULL,
+        asset_type VARCHAR(20) DEFAULT 'stock',
+        predicted_signal VARCHAR(10) NOT NULL,
+        predicted_date DATE NOT NULL,
+        predicted_price DOUBLE PRECISION,
+        actual_signal VARCHAR(10),
+        actual_price DOUBLE PRECISION,
+        correct BOOLEAN,
+        algorithm_version INT DEFAULT 1,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_predictions_date ON predictions(predicted_date);
+      CREATE INDEX IF NOT EXISTS idx_predictions_version ON predictions(algorithm_version);
+      CREATE INDEX IF NOT EXISTS idx_predictions_symbol ON predictions(symbol);
+
+      CREATE TABLE IF NOT EXISTS algorithm_versions (
+        id SERIAL PRIMARY KEY,
+        version_num INT NOT NULL UNIQUE,
+        params JSONB NOT NULL,
+        accuracy_pct DOUBLE PRECISION DEFAULT 0,
+        total_predictions INT DEFAULT 0,
+        correct_predictions INT DEFAULT 0,
+        notes TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS market_news (
+        id SERIAL PRIMARY KEY,
+        source VARCHAR(50) NOT NULL,
+        subreddit VARCHAR(50) DEFAULT '',
+        title TEXT NOT NULL,
+        url TEXT NOT NULL,
+        author VARCHAR(100) DEFAULT '',
+        score INT DEFAULT 0,
+        num_comments INT DEFAULT 0,
+        flair VARCHAR(100) DEFAULT '',
+        sector VARCHAR(100) DEFAULT '',
+        asset_type VARCHAR(20) DEFAULT '',
+        mentioned_symbols TEXT DEFAULT '',
+        fetched_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_market_news_fetched ON market_news(fetched_at);
+      CREATE INDEX IF NOT EXISTS idx_market_news_source ON market_news(source);
+
+      CREATE TABLE IF NOT EXISTS daily_recaps (
+        id SERIAL PRIMARY KEY,
+        recap_date DATE NOT NULL,
+        recap_type VARCHAR(20) NOT NULL,
+        top_movers JSONB DEFAULT '[]',
+        signal_changes JSONB DEFAULT '[]',
+        prediction_accuracy JSONB DEFAULT '{}',
+        algorithm_version INT DEFAULT 1,
+        summary TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_daily_recaps_date ON daily_recaps(recap_date);
+      CREATE INDEX IF NOT EXISTS idx_daily_recaps_type ON daily_recaps(recap_type);
     `);
     console.log("Database tables initialized");
   } finally {
     client.release();
   }
 }
-
-// server/routes.ts
-import { Router } from "express";
 
 // shared/indicators.ts
 function calculateMACD(bars) {
@@ -368,48 +431,52 @@ function computeIndicators(bars, params) {
   }
   return results;
 }
+function formatDate(d) {
+  if (!d) return "";
+  if (d instanceof Date) return d.toISOString().split("T")[0];
+  return String(d).split("T")[0];
+}
 async function loadPriceData(symbols, startDate, endDate, assetType, exchange) {
-  let query;
-  let queryParams;
-  const atFilter = assetType === "crypto" ? "crypto" : "stock";
+  const asset = assetType === "crypto" ? "crypto" : "stock";
+  let sql;
+  const params = [startDate, endDate, asset];
   if (symbols && symbols.length > 0) {
     if (exchange) {
-      query = `SELECT ph.symbol, ph.date, ph.open, ph.high, ph.low, ph.close, ph.volume
-               FROM price_history ph
-               JOIN stocks s ON s.symbol = ph.symbol AND s.asset_type = ph.asset_type
-               WHERE ph.symbol = ANY($1) AND ph.date >= $2 AND ph.date <= $3 AND ph.asset_type = $4 AND s.exchange = $5
-               ORDER BY ph.symbol, ph.date ASC`;
-      queryParams = [symbols, startDate, endDate, atFilter, exchange];
+      sql = `SELECT ph.symbol, ph.date, ph.open, ph.high, ph.low, ph.close, ph.volume
+             FROM price_history ph
+             JOIN stocks s ON s.symbol = ph.symbol AND s.asset_type = ph.asset_type
+             WHERE ph.symbol = ANY($4) AND ph.date >= $1 AND ph.date <= $2 AND ph.asset_type = $3 AND s.exchange = $5
+             ORDER BY ph.symbol, ph.date ASC`;
+      params.push(symbols, exchange);
     } else {
-      query = `SELECT symbol, date, open, high, low, close, volume
-               FROM price_history
-               WHERE symbol = ANY($1) AND date >= $2 AND date <= $3 AND asset_type = $4
-               ORDER BY symbol, date ASC`;
-      queryParams = [symbols, startDate, endDate, atFilter];
+      sql = `SELECT symbol, date, open, high, low, close, volume
+             FROM price_history
+             WHERE symbol = ANY($4) AND date >= $1 AND date <= $2 AND asset_type = $3
+             ORDER BY symbol, date ASC`;
+      params.push(symbols);
     }
   } else {
     if (exchange) {
-      query = `SELECT ph.symbol, ph.date, ph.open, ph.high, ph.low, ph.close, ph.volume
-               FROM price_history ph
-               JOIN stocks s ON s.symbol = ph.symbol AND s.asset_type = ph.asset_type
-               WHERE ph.date >= $1 AND ph.date <= $2 AND ph.asset_type = $3 AND s.exchange = $4
-               ORDER BY ph.symbol, ph.date ASC`;
-      queryParams = [startDate, endDate, atFilter, exchange];
+      sql = `SELECT ph.symbol, ph.date, ph.open, ph.high, ph.low, ph.close, ph.volume
+             FROM price_history ph
+             JOIN stocks s ON s.symbol = ph.symbol AND s.asset_type = ph.asset_type
+             WHERE ph.date >= $1 AND ph.date <= $2 AND ph.asset_type = $3 AND s.exchange = $4
+             ORDER BY ph.symbol, ph.date ASC`;
+      params.push(exchange);
     } else {
-      query = `SELECT symbol, date, open, high, low, close, volume
-               FROM price_history
-               WHERE date >= $1 AND date <= $2 AND asset_type = $3
-               ORDER BY symbol, date ASC`;
-      queryParams = [startDate, endDate, atFilter];
+      sql = `SELECT symbol, date, open, high, low, close, volume
+             FROM price_history
+             WHERE date >= $1 AND date <= $2 AND asset_type = $3
+             ORDER BY symbol, date ASC`;
     }
   }
-  const result = await pool.query(query, queryParams);
+  const result = await pool.query(sql, params);
   const bySymbol = /* @__PURE__ */ new Map();
   for (const row of result.rows) {
     const sym = row.symbol;
     if (!bySymbol.has(sym)) bySymbol.set(sym, []);
     bySymbol.get(sym).push({
-      date: row.date.toISOString().split("T")[0],
+      date: formatDate(row.date),
       open: parseFloat(row.open),
       high: parseFloat(row.high),
       low: parseFloat(row.low),
@@ -442,8 +509,10 @@ async function runSimulation(startDate, endDate, initialCapital, params, symbols
   let maxDrawdown = 0;
   let maxDrawdownPct = 0;
   const signalHistory = /* @__PURE__ */ new Map();
+  const positionBuyDate = /* @__PURE__ */ new Map();
   for (let dayIdx = 0; dayIdx < sortedDates.length; dayIdx++) {
     const date = sortedDates[dayIdx];
+    let tradesToday = 0;
     const candidates = [];
     for (const sd of allData) {
       const barIdx = sd.bars.findIndex((b) => b.date === date);
@@ -480,10 +549,20 @@ async function runSimulation(startDate, endDate, initialCapital, params, symbols
     if (candidates.length === 0) continue;
     for (const [sym, pos] of positions.entries()) {
       if (pos.quantity <= 0) continue;
+      if (params.maxTradesPerDay > 0 && tradesToday >= params.maxTradesPerDay) break;
       const cand = candidates.find((c) => c.symbol === sym);
       if (!cand) continue;
-      const currentPrice = cand.bar.close;
+      const currentPrice = params.useEndOfDayPrices ? cand.bar.close : cand.bar.open;
       const pnlPct = (currentPrice - pos.avgCost) / pos.avgCost * 100;
+      const buyDate = positionBuyDate.get(sym);
+      if (params.minHoldDays > 0 && buyDate) {
+        const buyMs = new Date(buyDate).getTime();
+        const nowMs = new Date(date).getTime();
+        const daysHeld = Math.floor((nowMs - buyMs) / (1e3 * 60 * 60 * 24));
+        if (daysHeld < params.minHoldDays) {
+          if (pnlPct > -params.stopLossPct) continue;
+        }
+      }
       let shouldSell = false;
       let reason = "";
       if (!cand.indicator.buySignal) {
@@ -517,6 +596,8 @@ async function runSimulation(startDate, endDate, initialCapital, params, symbols
           pnlPct: Math.round(pnlPctVal * 100) / 100
         });
         positions.delete(sym);
+        positionBuyDate.delete(sym);
+        tradesToday++;
       }
     }
     if (params.preferNewBuys) {
@@ -529,6 +610,7 @@ async function runSimulation(startDate, endDate, initialCapital, params, symbols
     }
     for (const cand of candidates) {
       if (cash <= params.minCashReserve) break;
+      if (params.maxTradesPerDay > 0 && tradesToday >= params.maxTradesPerDay) break;
       if (positions.has(cand.symbol)) continue;
       if (cand.bar.close > params.maxSharePrice) continue;
       if (cand.bar.close <= 0) continue;
@@ -537,14 +619,17 @@ async function runSimulation(startDate, endDate, initialCapital, params, symbols
       const maxAllocation = initialCapital * (params.maxPositionPct / 100);
       const available = Math.min(cash - params.minCashReserve, maxAllocation);
       if (available <= 0) continue;
-      const quantity = Math.floor(available / cand.bar.close);
+      const execPrice = params.useEndOfDayPrices ? cand.bar.close : cand.bar.open;
+      if (execPrice <= 0) continue;
+      const quantity = Math.floor(available / execPrice);
       if (quantity <= 0) continue;
-      const total = quantity * cand.bar.close;
+      const total = quantity * execPrice;
       cash -= total;
       positions.set(cand.symbol, {
         quantity,
-        avgCost: cand.bar.close
+        avgCost: execPrice
       });
+      positionBuyDate.set(cand.symbol, date);
       const reasonParts = [`MACD buy signal (adj: ${(cand.indicator.macdHistogramAdjusted * 1e4).toFixed(2)}, RSI: ${cand.indicator.rsi.toFixed(1)})`];
       if (params.preferNewBuys && cand.newBuyScore > 0) {
         reasonParts.push(`New buy score: ${cand.newBuyScore.toFixed(2)}`);
@@ -554,10 +639,11 @@ async function runSimulation(startDate, endDate, initialCapital, params, symbols
         symbol: cand.symbol,
         action: "BUY",
         quantity,
-        price: cand.bar.close,
+        price: execPrice,
         total,
         reason: reasonParts.join(" | ")
       });
+      tradesToday++;
     }
     let positionsValue = 0;
     const posSnapshot = {};
@@ -775,8 +861,8 @@ async function analyzeMarketConditions(strategies, initialCapital, benchmark, sy
   const benchBars = benchData[0].bars;
   const sma200 = [];
   for (let i = 0; i < benchBars.length; i++) {
-    const start2 = Math.max(0, i - 199);
-    const slice = benchBars.slice(start2, i + 1);
+    const start = Math.max(0, i - 199);
+    const slice = benchBars.slice(start, i + 1);
     sma200.push(slice.reduce((s, b) => s + b.close, 0) / slice.length);
   }
   const periods = [];
@@ -829,16 +915,24 @@ async function analyzeMarketConditions(strategies, initialCapital, benchmark, sy
       continue;
     }
     const avgDuration = condPeriods.reduce((s, p) => {
-      const start2 = new Date(p.startDate);
+      const start = new Date(p.startDate);
       const end = new Date(p.endDate);
-      return s + (end.getTime() - start2.getTime()) / (1e3 * 60 * 60 * 24);
+      return s + (end.getTime() - start.getTime()) / (1e3 * 60 * 60 * 24);
     }, 0) / condPeriods.length;
     const stratPerf = [];
     for (const strat of strategies) {
       const simResults = [];
       for (const period of condPeriods.slice(0, 5)) {
         try {
-          const result = await runSimulation(period.startDate, period.endDate, initialCapital, strat.params, symbols, assetType, exchange);
+          const result = await runSimulation(
+            period.startDate,
+            period.endDate,
+            initialCapital,
+            strat.params,
+            symbols,
+            assetType,
+            exchange
+          );
           simResults.push(result);
         } catch {
         }
@@ -853,12 +947,16 @@ async function analyzeMarketConditions(strategies, initialCapital, benchmark, sy
         });
         continue;
       }
+      const avgReturnPct = simResults.reduce((s, r) => s + r.totalReturnPct, 0) / simResults.length;
+      const avgAnnualized = simResults.reduce((s, r) => s + r.annualizedReturn, 0) / simResults.length;
+      const winRate = simResults.filter((r) => r.totalReturn > 0).length / simResults.length * 100;
+      const maxDrawdownPct = Math.max(...simResults.map((r) => r.maxDrawdownPct));
       stratPerf.push({
         strategyName: strat.name,
-        avgReturnPct: simResults.reduce((s, r) => s + r.totalReturnPct, 0) / simResults.length,
-        avgAnnualized: simResults.reduce((s, r) => s + r.annualizedReturn, 0) / simResults.length,
-        winRate: simResults.filter((r) => r.totalReturn > 0).length / simResults.length * 100,
-        maxDrawdownPct: Math.max(...simResults.map((r) => r.maxDrawdownPct))
+        avgReturnPct,
+        avgAnnualized,
+        winRate,
+        maxDrawdownPct
       });
     }
     results.push({
@@ -869,6 +967,348 @@ async function analyzeMarketConditions(strategies, initialCapital, benchmark, sy
     });
   }
   return results;
+}
+
+// server/news.ts
+var SUBREDDITS = [
+  { name: "wallstreetbets", label: "WSB" },
+  { name: "stocks", label: "Stocks" },
+  { name: "cryptocurrency", label: "Crypto" },
+  { name: "investing", label: "Investing" },
+  { name: "options", label: "Options" }
+];
+var CRYPTO_SYMBOLS = /* @__PURE__ */ new Set([
+  "BTC",
+  "ETH",
+  "SOL",
+  "DOGE",
+  "ADA",
+  "XRP",
+  "DOT",
+  "AVAX",
+  "MATIC",
+  "LINK",
+  "UNI",
+  "AAVE",
+  "ATOM",
+  "NEAR",
+  "FTM",
+  "ALGO",
+  "LTC",
+  "BCH",
+  "SHIB",
+  "PEPE"
+]);
+var SECTOR_KEYWORDS = {
+  Technology: ["tech", "software", "ai", "semiconductor", "chip", "cloud", "saas", "nvidia", "nvda", "aapl", "apple", "msft", "microsoft", "google", "goog", "meta", "amzn", "amazon", "tsla", "tesla"],
+  Healthcare: ["pharma", "biotech", "drug", "fda", "health", "medical", "vaccine"],
+  Finance: ["bank", "jpmorgan", "goldman", "finance", "interest rate", "fed", "treasury"],
+  Energy: ["oil", "gas", "energy", "solar", "wind", "renewable", "opec"],
+  "Consumer Discretionary": ["retail", "consumer", "shopping", "e-commerce"],
+  "Real Estate": ["real estate", "housing", "mortgage", "reit"]
+};
+function classifyPost(title, subreddit) {
+  const lower = title.toLowerCase();
+  const symbols = [];
+  const tickerRegex = /\$([A-Z]{1,5})\b/g;
+  let match;
+  while ((match = tickerRegex.exec(title)) !== null) {
+    symbols.push(match[1]);
+  }
+  let assetType = "";
+  if (subreddit === "cryptocurrency" || symbols.some((s) => CRYPTO_SYMBOLS.has(s))) {
+    assetType = "crypto";
+  } else if (symbols.length > 0 || subreddit === "stocks" || subreddit === "options") {
+    assetType = "stock";
+  }
+  let sector = "";
+  for (const [sectorName, keywords] of Object.entries(SECTOR_KEYWORDS)) {
+    if (keywords.some((kw) => lower.includes(kw))) {
+      sector = sectorName;
+      break;
+    }
+  }
+  return { sector, assetType, symbols };
+}
+async function fetchSubreddit(subreddit, sort = "hot", limit = 25) {
+  try {
+    const url = `https://www.reddit.com/r/${subreddit}/${sort}.json?limit=${limit}&raw_json=1`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "MATEO-MarketTerminal/1.0"
+      }
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data?.data?.children?.map((c) => c.data) || [];
+  } catch {
+    return [];
+  }
+}
+async function scrapeAndCacheNews() {
+  let totalInserted = 0;
+  for (const sub of SUBREDDITS) {
+    const posts = await fetchSubreddit(sub.name, "hot", 25);
+    for (const post of posts) {
+      if (post.stickied || post.is_self === false && !post.url) continue;
+      const { sector, assetType, symbols } = classifyPost(post.title, sub.name);
+      const url = post.permalink ? `https://reddit.com${post.permalink}` : post.url || "";
+      try {
+        await pool.query(
+          `INSERT INTO market_news (source, subreddit, title, url, author, score, num_comments, flair, sector, asset_type, mentioned_symbols)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+           ON CONFLICT DO NOTHING`,
+          [
+            "reddit",
+            sub.name,
+            post.title,
+            url,
+            post.author || "",
+            post.score || 0,
+            post.num_comments || 0,
+            post.link_flair_text || "",
+            sector,
+            assetType,
+            symbols.join(",")
+          ]
+        );
+        totalInserted++;
+      } catch {
+      }
+    }
+  }
+  return totalInserted;
+}
+async function getNews(filters) {
+  const conditions = [];
+  const params = [];
+  let idx = 1;
+  if (filters.assetType) {
+    conditions.push(`asset_type = $${idx++}`);
+    params.push(filters.assetType);
+  }
+  if (filters.sector) {
+    conditions.push(`sector ILIKE $${idx++}`);
+    params.push(`%${filters.sector}%`);
+  }
+  if (filters.source) {
+    conditions.push(`subreddit = $${idx++}`);
+    params.push(filters.source);
+  }
+  if (filters.hoursAgo) {
+    conditions.push(`fetched_at > NOW() - INTERVAL '${filters.hoursAgo} hours'`);
+  }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const limit = filters.limit || 50;
+  const result = await pool.query(
+    `SELECT * FROM market_news ${where} ORDER BY score DESC, fetched_at DESC LIMIT $${idx}`,
+    [...params, limit]
+  );
+  return result.rows;
+}
+async function getNewsSummary() {
+  const last24h = await pool.query(
+    `SELECT * FROM market_news WHERE fetched_at > NOW() - INTERVAL '24 hours' ORDER BY score DESC`
+  );
+  const posts = last24h.rows;
+  const subCounts = {};
+  const symbolCounts = {};
+  for (const post of posts) {
+    subCounts[post.subreddit] = (subCounts[post.subreddit] || 0) + 1;
+    if (post.mentioned_symbols) {
+      for (const sym of post.mentioned_symbols.split(",")) {
+        if (sym) symbolCounts[sym] = (symbolCounts[sym] || 0) + 1;
+      }
+    }
+  }
+  const topSubreddits = Object.entries(subCounts).map(([subreddit, count]) => ({ subreddit, count })).sort((a, b) => b.count - a.count);
+  const hotTopics = posts.slice(0, 10).map((p) => ({
+    title: p.title,
+    score: p.score,
+    subreddit: p.subreddit,
+    url: p.url
+  }));
+  const mentionedSymbols = Object.entries(symbolCounts).map(([symbol, count]) => ({ symbol, count })).sort((a, b) => b.count - a.count).slice(0, 20);
+  const bullish = posts.filter((p) => {
+    const t = p.title.toLowerCase();
+    return t.includes("bull") || t.includes("moon") || t.includes("buy") || t.includes("calls") || t.includes("rocket") || t.includes("squeeze");
+  }).length;
+  const bearish = posts.filter((p) => {
+    const t = p.title.toLowerCase();
+    return t.includes("bear") || t.includes("crash") || t.includes("sell") || t.includes("puts") || t.includes("short") || t.includes("dump");
+  }).length;
+  let sentiment = "NEUTRAL";
+  if (bullish > bearish * 1.5) sentiment = "BULLISH";
+  else if (bearish > bullish * 1.5) sentiment = "BEARISH";
+  return {
+    totalPosts: posts.length,
+    topSubreddits,
+    hotTopics,
+    mentionedSymbols,
+    sentiment
+  };
+}
+
+// server/predictions.ts
+async function getCurrentAlgorithmVersion() {
+  const result = await pool.query(
+    `SELECT COALESCE(MAX(version_num), 0) as max_version FROM algorithm_versions`
+  );
+  return result.rows[0].max_version || 1;
+}
+async function createAlgorithmVersion(params, notes = "") {
+  const currentMax = await getCurrentAlgorithmVersion();
+  const newVersion = currentMax + 1;
+  await pool.query(
+    `INSERT INTO algorithm_versions (version_num, params, notes) VALUES ($1, $2, $3)
+     ON CONFLICT (version_num) DO NOTHING`,
+    [newVersion, JSON.stringify(params), notes]
+  );
+  return newVersion;
+}
+async function generateDailyPredictions() {
+  const version = await getCurrentAlgorithmVersion();
+  const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+  const existing = await pool.query(
+    `SELECT COUNT(*) as cnt FROM predictions WHERE predicted_date = $1`,
+    [today]
+  );
+  if (parseInt(existing.rows[0].cnt) > 0) {
+    return 0;
+  }
+  const signals = await pool.query(
+    `SELECT symbol, asset_type, signal, price FROM computed_signals WHERE signal IN ('BUY', 'SELL')`
+  );
+  let inserted = 0;
+  for (const row of signals.rows) {
+    await pool.query(
+      `INSERT INTO predictions (symbol, asset_type, predicted_signal, predicted_date, predicted_price, algorithm_version)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [row.symbol, row.asset_type, row.signal, today, row.price, version]
+    );
+    inserted++;
+  }
+  return inserted;
+}
+async function evaluatePastPredictions() {
+  const unresolved = await pool.query(
+    `SELECT p.id, p.symbol, p.asset_type, p.predicted_signal, p.predicted_date, p.predicted_price
+     FROM predictions p
+     WHERE p.correct IS NULL AND p.predicted_date < CURRENT_DATE`
+  );
+  let evaluated = 0;
+  let correct = 0;
+  let wrong = 0;
+  for (const pred of unresolved.rows) {
+    const nextDay = new Date(pred.predicted_date);
+    nextDay.setDate(nextDay.getDate() + 1);
+    const nextDayStr = nextDay.toISOString().split("T")[0];
+    const priceResult = await pool.query(
+      `SELECT close FROM price_history
+       WHERE symbol = $1 AND asset_type = $2 AND date >= $3
+       ORDER BY date ASC LIMIT 1`,
+      [pred.symbol, pred.asset_type, nextDayStr]
+    );
+    if (priceResult.rows.length === 0) continue;
+    const actualPrice = priceResult.rows[0].close;
+    const priceChange = actualPrice - pred.predicted_price;
+    const pctChange = priceChange / pred.predicted_price * 100;
+    let isCorrect = false;
+    if (pred.predicted_signal === "BUY" && pctChange > 0) isCorrect = true;
+    if (pred.predicted_signal === "SELL" && pctChange < 0) isCorrect = true;
+    const actualSignal = pctChange > 0 ? "BUY" : pctChange < 0 ? "SELL" : "HOLD";
+    await pool.query(
+      `UPDATE predictions SET actual_signal = $1, actual_price = $2, correct = $3 WHERE id = $4`,
+      [actualSignal, actualPrice, isCorrect, pred.id]
+    );
+    evaluated++;
+    if (isCorrect) correct++;
+    else wrong++;
+  }
+  if (evaluated > 0) {
+    await updateVersionAccuracy();
+  }
+  return { evaluated, correct, wrong };
+}
+async function updateVersionAccuracy() {
+  const versions = await pool.query(`SELECT DISTINCT algorithm_version FROM predictions WHERE correct IS NOT NULL`);
+  for (const v of versions.rows) {
+    const stats = await pool.query(
+      `SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE correct = true) as correct_count
+       FROM predictions WHERE algorithm_version = $1 AND correct IS NOT NULL`,
+      [v.algorithm_version]
+    );
+    const total = parseInt(stats.rows[0].total);
+    const correctCount = parseInt(stats.rows[0].correct_count);
+    const accuracy = total > 0 ? correctCount / total * 100 : 0;
+    await pool.query(
+      `UPDATE algorithm_versions SET accuracy_pct = $1, total_predictions = $2, correct_predictions = $3
+       WHERE version_num = $4`,
+      [accuracy, total, correctCount, v.algorithm_version]
+    );
+  }
+}
+async function getRecap(type) {
+  let daysBack = 1;
+  if (type === "weekly") daysBack = 7;
+  if (type === "monthly") daysBack = 30;
+  const topMovers = await pool.query(
+    `SELECT symbol, name, asset_type, price, change_percent, signal
+     FROM computed_signals
+     ORDER BY ABS(change_percent) DESC LIMIT 20`
+  );
+  const signalChanges = await pool.query(
+    `SELECT symbol, name, asset_type, signal, last_signal_change, change_percent
+     FROM computed_signals
+     WHERE last_signal_change != '' AND last_signal_change IS NOT NULL
+     ORDER BY computed_at DESC LIMIT 20`
+  );
+  const predictionStats = await pool.query(
+    `SELECT
+       COUNT(*) as total,
+       COUNT(*) FILTER (WHERE correct = true) as correct_count,
+       COUNT(*) FILTER (WHERE correct = false) as wrong_count,
+       COUNT(*) FILTER (WHERE correct IS NULL) as pending
+     FROM predictions
+     WHERE predicted_date >= CURRENT_DATE - $1::int`,
+    [daysBack]
+  );
+  const recentPredictions = await pool.query(
+    `SELECT symbol, asset_type, predicted_signal, predicted_date, predicted_price,
+            actual_signal, actual_price, correct
+     FROM predictions
+     WHERE predicted_date >= CURRENT_DATE - $1::int
+     ORDER BY predicted_date DESC, symbol ASC
+     LIMIT 50`,
+    [daysBack]
+  );
+  const versionPerformance = await pool.query(
+    `SELECT version_num, params, accuracy_pct, total_predictions, correct_predictions, notes, created_at
+     FROM algorithm_versions ORDER BY version_num DESC`
+  );
+  const stats = predictionStats.rows[0];
+  return {
+    type,
+    period: `Last ${daysBack} day${daysBack > 1 ? "s" : ""}`,
+    topMovers: topMovers.rows,
+    signalChanges: signalChanges.rows,
+    predictionAccuracy: {
+      total: parseInt(stats.total),
+      correct: parseInt(stats.correct_count),
+      wrong: parseInt(stats.wrong_count),
+      pending: parseInt(stats.pending),
+      accuracyPct: parseInt(stats.total) > 0 ? parseInt(stats.correct_count) / (parseInt(stats.correct_count) + parseInt(stats.wrong_count)) * 100 || 0 : 0
+    },
+    recentPredictions: recentPredictions.rows,
+    algorithmVersions: versionPerformance.rows
+  };
+}
+async function getAlgorithmVersions() {
+  const result = await pool.query(
+    `SELECT version_num, params, accuracy_pct, total_predictions, correct_predictions, notes, created_at
+     FROM algorithm_versions ORDER BY version_num DESC`
+  );
+  return result.rows;
 }
 
 // server/routes.ts
@@ -886,7 +1326,10 @@ var defaultStrategy = {
   stopLossPct: 10,
   takeProfitPct: 20,
   preferNewBuys: false,
-  newBuyLookbackDays: 5
+  newBuyLookbackDays: 5,
+  maxTradesPerDay: 10,
+  minHoldDays: 0,
+  useEndOfDayPrices: true
 };
 var router = Router();
 function getAssetTypeFilter(assetType) {
@@ -894,29 +1337,44 @@ function getAssetTypeFilter(assetType) {
   return "stock";
 }
 async function computeSignalsAsOfDate(assetFilter, asOfDate, signalFilter, searchFilter, sortCol, sortOrder, lim, off, sectorFilter) {
-  const symbolsResult = await pool.query(
+  const symbolsRows = await pool.query(
     `SELECT DISTINCT ph.symbol, s.name, s.exchange, s.sector
      FROM price_history ph
-     LEFT JOIN stocks s ON s.symbol = ph.symbol
+     LEFT JOIN stocks s ON s.symbol = ph.symbol AND s.asset_type = ph.asset_type
      WHERE ph.asset_type = $1
      ORDER BY ph.symbol`,
     [assetFilter]
   );
+  const allPriceRows = await pool.query(
+    `SELECT symbol, date, open, high, low, close, volume
+     FROM price_history
+     WHERE asset_type = $1 AND date <= $2
+     ORDER BY symbol, date ASC`,
+    [assetFilter, asOfDate]
+  );
+  const bySymbol = /* @__PURE__ */ new Map();
+  for (const r of allPriceRows.rows) {
+    const sym = r.symbol;
+    if (!bySymbol.has(sym)) bySymbol.set(sym, []);
+    bySymbol.get(sym).push(r);
+  }
+  const metaMap = /* @__PURE__ */ new Map();
+  for (const row of symbolsRows.rows) {
+    metaMap.set(row.symbol, row);
+  }
   const allResults = [];
-  for (const row of symbolsResult.rows) {
-    const sym = row.symbol;
-    const priceResult = await pool.query(
-      `SELECT date, open, high, low, close, volume FROM price_history WHERE symbol = $1 AND asset_type = $2 AND date <= $3 ORDER BY date ASC`,
-      [sym, assetFilter, asOfDate]
-    );
-    if (priceResult.rows.length < 2) continue;
-    const bars = priceResult.rows.map((r) => ({
-      date: r.date.toISOString().split("T")[0],
-      open: r.open,
-      high: r.high,
-      low: r.low,
-      close: r.close,
-      volume: r.volume
+  for (const [sym, priceRows] of bySymbol.entries()) {
+    if (priceRows.length < 2) continue;
+    const meta = metaMap.get(sym) || { name: sym, exchange: "", sector: "" };
+    if (sectorFilter && sectorFilter !== "ALL" && (meta.sector || "") !== sectorFilter) continue;
+    if (searchFilter && !sym.toLowerCase().includes(searchFilter.toLowerCase()) && !(meta.name || "").toLowerCase().includes(searchFilter.toLowerCase())) continue;
+    const bars = priceRows.map((r) => ({
+      date: r.date instanceof Date ? r.date.toISOString().split("T")[0] : String(r.date).split("T")[0],
+      open: parseFloat(r.open),
+      high: parseFloat(r.high),
+      low: parseFloat(r.low),
+      close: parseFloat(r.close),
+      volume: parseInt(r.volume)
     }));
     const indicators = analyzeStock(bars);
     if (indicators.length === 0) continue;
@@ -930,13 +1388,11 @@ async function computeSignalsAsOfDate(assetFilter, asOfDate, signalFilter, searc
     const change = lastBar.close - firstBar.close;
     const changePercent = firstBar.close !== 0 ? change / firstBar.close * 100 : 0;
     if (signalFilter && signalFilter !== "ALL" && signal !== signalFilter) continue;
-    if (searchFilter && !sym.toLowerCase().includes(searchFilter.toLowerCase()) && !(row.name || "").toLowerCase().includes(searchFilter.toLowerCase())) continue;
-    if (sectorFilter && sectorFilter !== "ALL" && (row.sector || "") !== sectorFilter) continue;
     allResults.push({
       symbol: sym,
-      name: row.name || sym,
-      exchange: row.exchange || "",
-      sector: row.sector || "",
+      name: meta.name || sym,
+      exchange: meta.exchange || "",
+      sector: meta.sector || "",
       price: lastBar.close,
       change,
       changePercent,
@@ -1010,7 +1466,9 @@ router.get("/api/sectors", async (req, res) => {
   try {
     const assetFilter = getAssetTypeFilter(req.query.asset_type);
     const result = await pool.query(
-      `SELECT DISTINCT sector FROM stocks WHERE asset_type = $1 AND sector IS NOT NULL AND sector != '' ORDER BY sector`,
+      `SELECT DISTINCT sector FROM stocks
+       WHERE asset_type = $1 AND sector IS NOT NULL AND sector != ''
+       ORDER BY sector`,
       [assetFilter]
     );
     res.json(result.rows.map((r) => r.sector));
@@ -1026,7 +1484,7 @@ router.get("/api/stocks", async (req, res) => {
     const lim = Math.min(parseInt(limit) || 100, 500);
     const off = parseInt(offset) || 0;
     if (as_of_date && typeof as_of_date === "string") {
-      const result2 = await computeSignalsAsOfDate(
+      const result = await computeSignalsAsOfDate(
         assetFilter,
         as_of_date,
         signal,
@@ -1037,50 +1495,51 @@ router.get("/api/stocks", async (req, res) => {
         off,
         sector
       );
-      return res.json(result2);
+      return res.json(result);
     }
-    let query = `SELECT * FROM computed_signals WHERE asset_type = $1`;
+    let whereClauses = ["asset_type = $1"];
     const params = [assetFilter];
     let paramIdx = 2;
     if (signal && signal !== "ALL") {
-      query += ` AND signal = $${paramIdx++}`;
+      whereClauses.push(`signal = $${paramIdx}`);
       params.push(signal);
+      paramIdx++;
     }
     if (search) {
-      query += ` AND (symbol ILIKE $${paramIdx} OR name ILIKE $${paramIdx})`;
+      whereClauses.push(`(symbol ILIKE $${paramIdx} OR name ILIKE $${paramIdx})`);
       params.push(`%${search}%`);
       paramIdx++;
     }
     if (sector && sector !== "ALL") {
-      query += ` AND sector = $${paramIdx++}`;
+      whereClauses.push(`sector = $${paramIdx}`);
       params.push(sector);
+      paramIdx++;
     }
-    const sortCol = sort || "change_percent";
+    const whereStr = `WHERE ${whereClauses.join(" AND ")}`;
+    const sortColMap = {
+      symbol: "symbol",
+      name: "name",
+      price: "price",
+      change_percent: "change_percent",
+      signal: "signal",
+      rsi: "rsi",
+      macd_histogram: "macd_histogram",
+      signal_strength: "signal_strength",
+      volume: "volume",
+      macd_histogram_adjusted: "macd_histogram_adjusted"
+    };
+    const safeSort = sortColMap[sort || "change_percent"] || "change_percent";
     const sortOrder = order === "asc" ? "ASC" : "DESC";
-    const validCols = ["symbol", "name", "price", "change_percent", "signal", "rsi", "macd_histogram", "signal_strength", "volume", "macd_histogram_adjusted"];
-    const safeSort = validCols.includes(sortCol) ? sortCol : "change_percent";
-    query += ` ORDER BY ${safeSort} ${sortOrder}`;
-    query += ` LIMIT $${paramIdx++} OFFSET $${paramIdx++}`;
-    params.push(lim, off);
-    const result = await pool.query(query, params);
-    let countQuery = `SELECT COUNT(*) as total FROM computed_signals WHERE asset_type = $1`;
-    const countParams = [assetFilter];
-    if (signal && signal !== "ALL") {
-      countQuery += ` AND signal = $${countParams.length + 1}`;
-      countParams.push(signal);
-    }
-    if (search) {
-      const searchIdx = countParams.length + 1;
-      countQuery += ` AND (symbol ILIKE $${searchIdx} OR name ILIKE $${searchIdx})`;
-      countParams.push(`%${search}%`);
-    }
-    if (sector && sector !== "ALL") {
-      countQuery += ` AND sector = $${countParams.length + 1}`;
-      countParams.push(sector);
-    }
-    const countResult = await pool.query(countQuery, countParams);
+    const dataResult = await pool.query(
+      `SELECT * FROM computed_signals ${whereStr} ORDER BY ${safeSort} ${sortOrder} LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
+      [...params, lim, off]
+    );
+    const countResult = await pool.query(
+      `SELECT COUNT(*) as total FROM computed_signals ${whereStr}`,
+      params
+    );
     res.json({
-      data: result.rows.map((row) => ({
+      data: dataResult.rows.map((row) => ({
         symbol: row.symbol,
         name: row.name,
         exchange: row.exchange,
@@ -1163,25 +1622,29 @@ router.get("/api/stocks/top-performers", async (req, res) => {
 router.get("/api/stocks/:symbol", async (req, res) => {
   try {
     const { symbol } = req.params;
+    const upperSymbol = symbol.toUpperCase();
     const stockResult = await pool.query(
-      `SELECT * FROM computed_signals WHERE symbol = $1`,
-      [symbol.toUpperCase()]
+      `SELECT * FROM computed_signals WHERE symbol = $1 LIMIT 1`,
+      [upperSymbol]
     );
     if (stockResult.rows.length === 0) {
       return res.status(404).json({ error: "Stock not found" });
     }
     const stock = stockResult.rows[0];
     const priceResult = await pool.query(
-      `SELECT date, open, high, low, close, volume FROM price_history WHERE symbol = $1 ORDER BY date ASC`,
-      [symbol.toUpperCase()]
+      `SELECT date, open, high, low, close, volume
+       FROM price_history
+       WHERE symbol = $1 AND asset_type = $2
+       ORDER BY date ASC`,
+      [upperSymbol, stock.asset_type]
     );
     const bars = priceResult.rows.map((row) => ({
-      date: row.date.toISOString().split("T")[0],
-      open: row.open,
-      high: row.high,
-      low: row.low,
-      close: row.close,
-      volume: row.volume
+      date: row.date instanceof Date ? row.date.toISOString().split("T")[0] : String(row.date).split("T")[0],
+      open: parseFloat(row.open),
+      high: parseFloat(row.high),
+      low: parseFloat(row.low),
+      close: parseFloat(row.close),
+      volume: parseInt(row.volume)
     }));
     const indicators = analyzeStock(bars);
     res.json({
@@ -1217,17 +1680,24 @@ router.get("/api/stocks/:symbol", async (req, res) => {
 router.get("/api/stats", async (req, res) => {
   try {
     const assetFilter = getAssetTypeFilter(req.query.asset_type);
-    const total = await pool.query(`SELECT COUNT(*) as count FROM computed_signals WHERE asset_type = $1`, [assetFilter]);
-    const buys = await pool.query(`SELECT COUNT(*) as count FROM computed_signals WHERE asset_type = $1 AND signal = 'BUY'`, [assetFilter]);
-    const sells = await pool.query(`SELECT COUNT(*) as count FROM computed_signals WHERE asset_type = $1 AND signal = 'SELL'`, [assetFilter]);
-    const holds = await pool.query(`SELECT COUNT(*) as count FROM computed_signals WHERE asset_type = $1 AND signal = 'HOLD'`, [assetFilter]);
-    const lastUpdate = await pool.query(`SELECT MAX(computed_at) as last_update FROM computed_signals WHERE asset_type = $1`, [assetFilter]);
+    const result = await pool.query(
+      `SELECT
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE signal = 'BUY') as buys,
+        COUNT(*) FILTER (WHERE signal = 'SELL') as sells,
+        COUNT(*) FILTER (WHERE signal = 'HOLD') as holds,
+        MAX(computed_at) as last_update
+       FROM computed_signals
+       WHERE asset_type = $1`,
+      [assetFilter]
+    );
+    const row = result.rows[0];
     res.json({
-      total: parseInt(total.rows[0].count),
-      buys: parseInt(buys.rows[0].count),
-      sells: parseInt(sells.rows[0].count),
-      holds: parseInt(holds.rows[0].count),
-      lastUpdate: lastUpdate.rows[0].last_update
+      total: parseInt(row.total),
+      buys: parseInt(row.buys),
+      sells: parseInt(row.sells),
+      holds: parseInt(row.holds),
+      lastUpdate: row.last_update || null
     });
   } catch (err) {
     console.error("Error fetching stats:", err);
@@ -1251,13 +1721,20 @@ router.get("/api/data-range", async (req, res) => {
   try {
     const assetFilter = getAssetTypeFilter(req.query.asset_type);
     const result = await pool.query(
-      `SELECT MIN(date) as min_date, MAX(date) as max_date, COUNT(DISTINCT symbol) as symbol_count, COUNT(*) as total_bars FROM price_history WHERE asset_type = $1`,
+      `SELECT MIN(date) as min_date, MAX(date) as max_date, COUNT(DISTINCT symbol) as symbol_count, COUNT(*) as total_bars
+       FROM price_history
+       WHERE asset_type = $1`,
       [assetFilter]
     );
     const row = result.rows[0];
+    const formatDate2 = (d) => {
+      if (!d) return "";
+      if (d instanceof Date) return d.toISOString().split("T")[0];
+      return String(d).split("T")[0];
+    };
     res.json({
-      minDate: row.min_date ? row.min_date.toISOString().split("T")[0] : null,
-      maxDate: row.max_date ? row.max_date.toISOString().split("T")[0] : null,
+      minDate: formatDate2(row.min_date),
+      maxDate: formatDate2(row.max_date),
       symbolCount: parseInt(row.symbol_count),
       totalBars: parseInt(row.total_bars)
     });
@@ -1333,6 +1810,90 @@ router.post("/api/simulation/market-conditions", async (req, res) => {
     res.status(500).json({ error: err.message || "Market conditions analysis failed" });
   }
 });
+router.get("/api/news", async (req, res) => {
+  try {
+    const { asset_type, sector, source, limit } = req.query;
+    const news = await getNews({
+      assetType: asset_type,
+      sector,
+      source,
+      limit: limit ? parseInt(limit) : 50,
+      hoursAgo: 48
+    });
+    res.json(news);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+router.post("/api/news/refresh", async (_req, res) => {
+  try {
+    const count = await scrapeAndCacheNews();
+    res.json({ inserted: count, message: `Scraped ${count} posts` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+router.get("/api/news/summary", async (_req, res) => {
+  try {
+    const summary = await getNewsSummary();
+    res.json(summary);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+router.get("/api/predictions/recap/:type", async (req, res) => {
+  try {
+    const type = req.params.type;
+    if (!["daily", "weekly", "monthly"].includes(type)) {
+      return res.status(400).json({ error: "Type must be daily, weekly, or monthly" });
+    }
+    const recap = await getRecap(type);
+    res.json(recap);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+router.post("/api/predictions/generate", async (_req, res) => {
+  try {
+    await evaluatePastPredictions();
+    const count = await generateDailyPredictions();
+    res.json({ generated: count });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+router.get("/api/algorithm/versions", async (_req, res) => {
+  try {
+    const versions = await getAlgorithmVersions();
+    res.json(versions);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+router.post("/api/algorithm/version", async (req, res) => {
+  try {
+    const { params, notes } = req.body;
+    const version = await createAlgorithmVersion(params, notes);
+    res.json({ version });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+router.get("/api/paper-money/signals", async (req, res) => {
+  try {
+    const symbols = (req.query.symbols || "").split(",").filter(Boolean);
+    if (symbols.length === 0) return res.json([]);
+    const result = await pool.query(
+      `SELECT symbol, signal, price, change_percent, rsi, macd_histogram
+       FROM computed_signals
+       WHERE symbol = ANY($1)`,
+      [symbols]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 var routes_default = router;
 
 // server/index.ts
@@ -1348,10 +1909,11 @@ app.use(express.static(distPath));
 app.get("*", (_req, res) => {
   res.sendFile(path.join(distPath, "index.html"));
 });
-async function start() {
-  await initDB();
+initDB().then(() => {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);
   });
-}
-start().catch(console.error);
+}).catch((err) => {
+  console.error("Failed to initialize database:", err);
+  process.exit(1);
+});
