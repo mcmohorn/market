@@ -401,7 +401,7 @@ router.get("/api/stocks/:symbol", async (req, res) => {
       name: stock.name,
       exchange: stock.exchange,
       sector: stock.sector,
-      indicators: indicators.slice(-90),
+      indicators: indicators,
       summary: {
         symbol: stock.symbol,
         name: stock.name,

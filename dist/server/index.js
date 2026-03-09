@@ -1,6 +1,7 @@
 import{createRequire}from'module';const require=createRequire(import.meta.url);
 
 // server/index.ts
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import path from "path";
@@ -40,6 +41,9 @@ async function initDB() {
         asset_type VARCHAR(20) DEFAULT 'stock'
       );
 
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_stocks_symbol_asset ON stocks(symbol, asset_type);
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_price_history_symbol_date_asset ON price_history(symbol, date, asset_type);
       CREATE INDEX IF NOT EXISTS idx_price_history_symbol ON price_history(symbol);
       CREATE INDEX IF NOT EXISTS idx_price_history_date ON price_history(date);
       CREATE INDEX IF NOT EXISTS idx_price_history_asset ON price_history(asset_type);
@@ -66,6 +70,7 @@ async function initDB() {
         computed_at TIMESTAMP DEFAULT NOW()
       );
 
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_computed_signals_symbol_asset ON computed_signals(symbol, asset_type);
       CREATE INDEX IF NOT EXISTS idx_computed_signals_signal ON computed_signals(signal);
       CREATE INDEX IF NOT EXISTS idx_computed_signals_change ON computed_signals(change_percent);
       CREATE INDEX IF NOT EXISTS idx_computed_signals_asset ON computed_signals(asset_type);
@@ -115,6 +120,7 @@ async function initDB() {
         mentioned_symbols TEXT DEFAULT '',
         fetched_at TIMESTAMP DEFAULT NOW()
       );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_market_news_unique ON market_news(subreddit, title, author);
       CREATE INDEX IF NOT EXISTS idx_market_news_fetched ON market_news(fetched_at);
       CREATE INDEX IF NOT EXISTS idx_market_news_source ON market_news(source);
 
@@ -487,7 +493,11 @@ async function loadPriceData(symbols, startDate, endDate, assetType, exchange) {
   return Array.from(bySymbol.entries()).filter(([_, bars]) => bars.length >= 30).map(([symbol, bars]) => ({ symbol, bars, indicators: [] }));
 }
 async function runSimulation(startDate, endDate, initialCapital, params, symbols, assetType, exchange) {
-  const allData = await loadPriceData(symbols, startDate, endDate, assetType, exchange);
+  const warmupDays = Math.max(params.macdSlowPeriod, params.rsiPeriod, 30) * 3;
+  const warmupDate = new Date(startDate);
+  warmupDate.setDate(warmupDate.getDate() - warmupDays);
+  const warmupStartDate = warmupDate.toISOString().split("T")[0];
+  const allData = await loadPriceData(symbols, warmupStartDate, endDate, assetType, exchange);
   if (allData.length === 0) {
     throw new Error("No price data found for the given date range and symbols");
   }
@@ -497,10 +507,15 @@ async function runSimulation(startDate, endDate, initialCapital, params, symbols
   const allDates = /* @__PURE__ */ new Set();
   for (const sd of allData) {
     for (const bar of sd.bars) {
-      allDates.add(bar.date);
+      if (bar.date >= startDate) {
+        allDates.add(bar.date);
+      }
     }
   }
   const sortedDates = Array.from(allDates).sort();
+  if (sortedDates.length === 0) {
+    throw new Error("No trading days found in the requested date range");
+  }
   let cash = initialCapital;
   const positions = /* @__PURE__ */ new Map();
   const trades = [];
@@ -1030,17 +1045,44 @@ function classifyPost(title, subreddit) {
   }
   return { sector, assetType, symbols };
 }
-async function fetchSubreddit(subreddit, sort = "hot", limit = 25) {
+async function fetchSubredditPullPush(subreddit, limit = 50) {
   try {
-    const url = `https://www.reddit.com/r/${subreddit}/${sort}.json?limit=${limit}&raw_json=1`;
+    const url = `https://api.pullpush.io/reddit/search/submission/?subreddit=${subreddit}&sort=score&sort_type=desc&size=${limit}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15e3);
     const res = await fetch(url, {
-      headers: {
-        "User-Agent": "MATEO-MarketTerminal/1.0"
-      }
+      headers: { "User-Agent": "MATEO-MarketTerminal/1.0" },
+      signal: controller.signal
     });
+    clearTimeout(timeout);
+    if (!res.ok) {
+      console.log(`PullPush returned ${res.status} for r/${subreddit}`);
+      return [];
+    }
+    const data = await res.json();
+    return data?.data || [];
+  } catch (err) {
+    console.log(`PullPush fetch failed for r/${subreddit}: ${err.message}`);
+    return [];
+  }
+}
+async function fetchSubredditReddit(subreddit, limit = 25) {
+  try {
+    const url = `https://www.reddit.com/r/${subreddit}/hot.json?limit=${limit}&raw_json=1`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1e4);
+    const res = await fetch(url, {
+      headers: { "User-Agent": "MATEO-MarketTerminal/1.0" },
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
     if (!res.ok) return [];
     const data = await res.json();
-    return data?.data?.children?.map((c) => c.data) || [];
+    return (data?.data?.children || []).map((c) => ({
+      ...c.data,
+      num_comments: c.data.num_comments || 0,
+      score: c.data.score || 0
+    }));
   } catch {
     return [];
   }
@@ -1048,32 +1090,42 @@ async function fetchSubreddit(subreddit, sort = "hot", limit = 25) {
 async function scrapeAndCacheNews() {
   let totalInserted = 0;
   for (const sub of SUBREDDITS) {
-    const posts = await fetchSubreddit(sub.name, "hot", 25);
+    let posts = await fetchSubredditReddit(sub.name, 25);
+    if (posts.length === 0) {
+      console.log(`Reddit blocked for r/${sub.name}, falling back to PullPush...`);
+      posts = await fetchSubredditPullPush(sub.name, 50);
+    }
+    console.log(`r/${sub.name}: fetched ${posts.length} posts`);
     for (const post of posts) {
-      if (post.stickied || post.is_self === false && !post.url) continue;
-      const { sector, assetType, symbols } = classifyPost(post.title, sub.name);
-      const url = post.permalink ? `https://reddit.com${post.permalink}` : post.url || "";
+      if (post.stickied) continue;
+      const title = post.title;
+      if (!title) continue;
+      const { sector, assetType, symbols } = classifyPost(title, sub.name);
+      const permalink = post.permalink || "";
+      const url = permalink.startsWith("http") ? permalink : permalink ? `https://reddit.com${permalink}` : post.url || "";
       try {
-        await pool.query(
+        const insertResult = await pool.query(
           `INSERT INTO market_news (source, subreddit, title, url, author, score, num_comments, flair, sector, asset_type, mentioned_symbols)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-           ON CONFLICT DO NOTHING`,
+           ON CONFLICT (subreddit, title, author) DO UPDATE SET score = EXCLUDED.score, num_comments = EXCLUDED.num_comments, fetched_at = NOW()
+           RETURNING id`,
           [
             "reddit",
             sub.name,
-            post.title,
+            title.slice(0, 500),
             url,
             post.author || "",
             post.score || 0,
             post.num_comments || 0,
-            post.link_flair_text || "",
+            post.link_flair_text || post.link_flair_richtext?.[0]?.t || "",
             sector,
             assetType,
             symbols.join(",")
           ]
         );
-        totalInserted++;
-      } catch {
+        if (insertResult.rowCount && insertResult.rowCount > 0) totalInserted++;
+      } catch (err) {
+        console.log(`Insert error for "${title.slice(0, 40)}": ${err.message}`);
       }
     }
   }
@@ -1095,9 +1147,6 @@ async function getNews(filters) {
     conditions.push(`subreddit = $${idx++}`);
     params.push(filters.source);
   }
-  if (filters.hoursAgo) {
-    conditions.push(`fetched_at > NOW() - INTERVAL '${filters.hoursAgo} hours'`);
-  }
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   const limit = filters.limit || 50;
   const result = await pool.query(
@@ -1107,10 +1156,10 @@ async function getNews(filters) {
   return result.rows;
 }
 async function getNewsSummary() {
-  const last24h = await pool.query(
-    `SELECT * FROM market_news WHERE fetched_at > NOW() - INTERVAL '24 hours' ORDER BY score DESC`
+  const allNews = await pool.query(
+    `SELECT * FROM market_news ORDER BY score DESC LIMIT 200`
   );
-  const posts = last24h.rows;
+  const posts = allNews.rows;
   const subCounts = {};
   const symbolCounts = {};
   for (const post of posts) {
@@ -1131,11 +1180,11 @@ async function getNewsSummary() {
   const mentionedSymbols = Object.entries(symbolCounts).map(([symbol, count]) => ({ symbol, count })).sort((a, b) => b.count - a.count).slice(0, 20);
   const bullish = posts.filter((p) => {
     const t = p.title.toLowerCase();
-    return t.includes("bull") || t.includes("moon") || t.includes("buy") || t.includes("calls") || t.includes("rocket") || t.includes("squeeze");
+    return t.includes("bull") || t.includes("moon") || t.includes("buy") || t.includes("calls") || t.includes("rocket") || t.includes("squeeze") || t.includes("yolo") || t.includes("to the moon") || t.includes("gain");
   }).length;
   const bearish = posts.filter((p) => {
     const t = p.title.toLowerCase();
-    return t.includes("bear") || t.includes("crash") || t.includes("sell") || t.includes("puts") || t.includes("short") || t.includes("dump");
+    return t.includes("bear") || t.includes("crash") || t.includes("sell") || t.includes("puts") || t.includes("short") || t.includes("dump") || t.includes("loss") || t.includes("recession");
   }).length;
   let sentiment = "NEUTRAL";
   if (bullish > bearish * 1.5) sentiment = "BULLISH";
@@ -1150,11 +1199,31 @@ async function getNewsSummary() {
 }
 
 // server/predictions.ts
+async function ensureBaselineVersion() {
+  const result = await pool.query(`SELECT COUNT(*) as cnt FROM algorithm_versions`);
+  if (parseInt(result.rows[0].cnt) === 0) {
+    await pool.query(
+      `INSERT INTO algorithm_versions (version_num, params, notes) VALUES (1, $1, 'Initial baseline version')
+       ON CONFLICT (version_num) DO NOTHING`,
+      [JSON.stringify({
+        macdFastPeriod: 12,
+        macdSlowPeriod: 26,
+        macdSignalPeriod: 9,
+        rsiPeriod: 12,
+        rsiOverbought: 70,
+        rsiOversold: 30,
+        minBuySignal: 4,
+        maxSharePrice: 500
+      })]
+    );
+  }
+}
 async function getCurrentAlgorithmVersion() {
+  await ensureBaselineVersion();
   const result = await pool.query(
-    `SELECT COALESCE(MAX(version_num), 0) as max_version FROM algorithm_versions`
+    `SELECT COALESCE(MAX(version_num), 1) as max_version FROM algorithm_versions`
   );
-  return result.rows[0].max_version || 1;
+  return result.rows[0].max_version;
 }
 async function createAlgorithmVersion(params, notes = "") {
   const currentMax = await getCurrentAlgorithmVersion();
@@ -1652,7 +1721,7 @@ router.get("/api/stocks/:symbol", async (req, res) => {
       name: stock.name,
       exchange: stock.exchange,
       sector: stock.sector,
-      indicators: indicators.slice(-90),
+      indicators,
       summary: {
         symbol: stock.symbol,
         name: stock.name,
@@ -1817,8 +1886,7 @@ router.get("/api/news", async (req, res) => {
       assetType: asset_type,
       sector,
       source,
-      limit: limit ? parseInt(limit) : 50,
-      hoursAgo: 48
+      limit: limit ? parseInt(limit) : 50
     });
     res.json(news);
   } catch (err) {
@@ -1884,9 +1952,10 @@ router.get("/api/paper-money/signals", async (req, res) => {
     const symbols = (req.query.symbols || "").split(",").filter(Boolean);
     if (symbols.length === 0) return res.json([]);
     const result = await pool.query(
-      `SELECT symbol, signal, price, change_percent, rsi, macd_histogram
+      `SELECT DISTINCT ON (symbol) symbol, asset_type, signal, price, change_percent, rsi, macd_histogram
        FROM computed_signals
-       WHERE symbol = ANY($1)`,
+       WHERE symbol = ANY($1)
+       ORDER BY symbol, computed_at DESC`,
       [symbols]
     );
     res.json(result.rows);
