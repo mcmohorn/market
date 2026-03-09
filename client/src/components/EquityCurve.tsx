@@ -1,10 +1,94 @@
 import { useMemo, useCallback } from "react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Area, ComposedChart } from "recharts";
-import type { SimulationResult } from "../../../shared/types";
+import type { SimulationResult, PortfolioSnapshot } from "../../../shared/types";
 
 interface Props {
   result: SimulationResult;
   onDateClick?: (date: string) => void;
+}
+
+interface ChartPoint {
+  date: string;
+  portfolio: number;
+  cash: number;
+  positions: number;
+  baseline: number;
+  snapshot: PortfolioSnapshot;
+}
+
+function CustomTooltip({ active, payload, label }: any) {
+  if (!active || !payload || !payload.length) return null;
+
+  const point: ChartPoint = payload[0]?.payload;
+  if (!point) return null;
+
+  const snap = point.snapshot;
+  const posEntries = snap.positions ? Object.entries(snap.positions) : [];
+  const sortedPositions = posEntries
+    .filter(([, p]) => p.quantity > 0)
+    .sort((a, b) => b[1].value - a[1].value);
+
+  return (
+    <div
+      style={{
+        backgroundColor: "#0a0f0a",
+        border: "1px solid #1a3a1a",
+        fontFamily: "monospace",
+        fontSize: 11,
+        padding: "8px 10px",
+        maxWidth: 320,
+      }}
+    >
+      <div style={{ color: "#00ff41", marginBottom: 6, fontWeight: "bold" }}>{label}</div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, marginBottom: 2 }}>
+        <span style={{ color: "#888" }}>Portfolio</span>
+        <span style={{ color: point.portfolio >= point.baseline ? "#00ff41" : "#ff4444" }}>
+          ${point.portfolio.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, marginBottom: 2 }}>
+        <span style={{ color: "#888" }}>Cash</span>
+        <span style={{ color: "#eab308" }}>
+          ${point.cash.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, marginBottom: sortedPositions.length > 0 ? 4 : 0 }}>
+        <span style={{ color: "#888" }}>Positions</span>
+        <span style={{ color: "#06b6d4" }}>
+          ${point.positions.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+      </div>
+      {sortedPositions.length > 0 && (
+        <div style={{ borderTop: "1px solid #1a3a1a", paddingTop: 4, marginTop: 2 }}>
+          <div style={{ color: "#06b6d4", fontSize: 10, marginBottom: 3, textTransform: "uppercase", letterSpacing: 1 }}>
+            Holdings ({sortedPositions.length})
+          </div>
+          {sortedPositions.slice(0, 10).map(([symbol, pos]) => {
+            const pnl = pos.pnl;
+            const pnlPct = pos.avgCost > 0 ? ((pos.currentPrice - pos.avgCost) / pos.avgCost) * 100 : 0;
+            return (
+              <div key={symbol} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 10, marginBottom: 1 }}>
+                <span style={{ color: "#e0e0e0" }}>
+                  {symbol} <span style={{ color: "#555" }}>x{pos.quantity}</span>
+                </span>
+                <span style={{ color: "#888" }}>
+                  @${pos.currentPrice.toFixed(2)}
+                </span>
+                <span style={{ color: pnl >= 0 ? "#00ff41" : "#ff4444" }}>
+                  {pnl >= 0 ? "+" : ""}{pnlPct.toFixed(1)}%
+                </span>
+              </div>
+            );
+          })}
+          {sortedPositions.length > 10 && (
+            <div style={{ color: "#555", fontSize: 9, marginTop: 2 }}>
+              +{sortedPositions.length - 10} more...
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function EquityCurve({ result, onDateClick }: Props) {
@@ -15,6 +99,7 @@ export default function EquityCurve({ result, onDateClick }: Props) {
       cash: Math.round(snap.cash * 100) / 100,
       positions: Math.round(snap.positionsValue * 100) / 100,
       baseline: result.initialCapital,
+      snapshot: snap,
     }));
   }, [result]);
 
@@ -86,19 +171,7 @@ export default function EquityCurve({ result, onDateClick }: Props) {
             tick={{ fill: "#666", fontSize: 10, fontFamily: "monospace" }}
             tickFormatter={v => `$${(v / 1000).toFixed(1)}k`}
           />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "#0a0f0a",
-              border: "1px solid #1a3a1a",
-              fontFamily: "monospace",
-              fontSize: 11,
-            }}
-            labelStyle={{ color: "#00ff41" }}
-            formatter={(value: number, name: string) => [
-              `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-              name.charAt(0).toUpperCase() + name.slice(1),
-            ]}
-          />
+          <Tooltip content={<CustomTooltip />} />
           <ReferenceLine
             y={result.initialCapital}
             stroke="#333"
