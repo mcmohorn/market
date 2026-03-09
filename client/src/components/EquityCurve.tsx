@@ -5,6 +5,7 @@ import type { SimulationResult, PortfolioSnapshot } from "../../../shared/types"
 interface Props {
   result: SimulationResult;
   onDateClick?: (date: string) => void;
+  highlightDate?: string | null;
 }
 
 interface ChartPoint {
@@ -91,7 +92,7 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
-export default function EquityCurve({ result, onDateClick }: Props) {
+export default function EquityCurve({ result, onDateClick, highlightDate }: Props) {
   const chartData = useMemo(() => {
     return result.timeline.map(snap => ({
       date: snap.date,
@@ -114,6 +115,20 @@ export default function EquityCurve({ result, onDateClick }: Props) {
   }, [chartData]);
 
   const isProfit = result.totalReturn >= 0;
+
+  const highlightPoint = useMemo(() => {
+    if (!highlightDate) return null;
+    let closest: ChartPoint | null = null;
+    let closestDist = Infinity;
+    for (const pt of chartData) {
+      const dist = Math.abs(new Date(pt.date).getTime() - new Date(highlightDate).getTime());
+      if (dist < closestDist) {
+        closestDist = dist;
+        closest = pt;
+      }
+    }
+    return closest;
+  }, [highlightDate, chartData]);
 
   const handleClick = useCallback((state: any) => {
     if (state?.activePayload?.[0]?.payload?.date && onDateClick) {
@@ -178,6 +193,21 @@ export default function EquityCurve({ result, onDateClick }: Props) {
             strokeDasharray="3 3"
             label={{ value: "Start", fill: "#666", fontSize: 10, fontFamily: "monospace" }}
           />
+          {highlightPoint && (
+            <ReferenceLine
+              x={highlightPoint.date}
+              stroke="#ff6600"
+              strokeWidth={2}
+              strokeDasharray="4 2"
+              label={{
+                value: `$${highlightPoint.portfolio.toLocaleString("en-US", { maximumFractionDigits: 0 })}`,
+                fill: "#ff6600",
+                fontSize: 10,
+                fontFamily: "monospace",
+                position: "top",
+              }}
+            />
+          )}
           <Area
             type="monotone"
             dataKey="portfolio"

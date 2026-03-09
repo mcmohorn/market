@@ -7,9 +7,10 @@ type SortDir = "asc" | "desc";
 interface Props {
   trades: TradeRecord[];
   highlightDate?: string | null;
+  onTradeHover?: (date: string | null) => void;
 }
 
-export default function TradeLog({ trades, highlightDate }: Props) {
+export default function TradeLog({ trades, highlightDate, onTradeHover }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [filterSymbol, setFilterSymbol] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>("date");
@@ -176,11 +177,13 @@ export default function TradeLog({ trades, highlightDate }: Props) {
                 <tr
                   key={i}
                   ref={isHighlighted ? highlightRef : undefined}
-                  className={`border-b border-cyber-grid/30 transition-colors ${
+                  className={`border-b border-cyber-grid/30 transition-colors cursor-pointer ${
                     isHighlighted
                       ? "bg-cyber-green/20 ring-1 ring-cyber-green/40"
                       : "hover:bg-cyber-grid/10"
                   }`}
+                  onMouseEnter={() => onTradeHover?.(trade.date)}
+                  onMouseLeave={() => onTradeHover?.(null)}
                 >
                   <td className="py-1 px-2 text-cyber-muted">{trade.date}</td>
                   <td className="py-1 px-2">
