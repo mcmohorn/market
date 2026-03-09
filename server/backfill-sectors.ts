@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { pool, initDB } from "./db";
 
 const SECTOR_KEYWORDS: Record<string, string[]> = {

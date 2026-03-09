@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { pool, initDB } from "./db";
 import type { StockBar } from "../shared/types";
 

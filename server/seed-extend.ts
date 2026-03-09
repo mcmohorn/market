@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { pool, initDB } from "./db";
 import { analyzeStock, getSignal, getSignalStrength, countSignalChanges, lastSignalChangeDate } from "../shared/indicators";
 import type { StockBar } from "../shared/types";
