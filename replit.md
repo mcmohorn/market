@@ -103,7 +103,8 @@ The application is built as a full-stack web application using TypeScript. The f
 - **Algorithm Versioning** - Tracks parameter changes, accuracy per version, helps identify best-performing algorithms
 
 ### Seeding Commands
-- `npx tsx server/seed.ts` - Full seed (fetches all stocks from Alpaca + crypto from Tiingo, computes signals)
+- `yarn seed-db` / `npx tsx server/seed.ts` - Full seed (fetches all stocks from Alpaca + crypto from Tiingo, computes signals)
+- `yarn update-db` / `npx tsx server/update.ts` - Incremental update (only fetches bars after each symbol's last date, only recomputes signals for updated symbols)
 - `npx tsx server/seed-extend.ts` - Smart incremental extend (skips already-complete symbols, env: BATCH_LIMIT)
 - `npx tsx server/seed-stocks-extend.ts` - Stock extension by year (env: START_YEAR, END_YEAR, OFFSET, LIMIT)
 - `npx tsx server/seed-crypto-extend.ts` - Crypto extension from Tiingo
