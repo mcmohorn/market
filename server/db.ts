@@ -30,6 +30,9 @@ export async function initDB() {
         asset_type VARCHAR(20) DEFAULT 'stock'
       );
 
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_stocks_symbol_asset ON stocks(symbol, asset_type);
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_price_history_symbol_date_asset ON price_history(symbol, date, asset_type);
       CREATE INDEX IF NOT EXISTS idx_price_history_symbol ON price_history(symbol);
       CREATE INDEX IF NOT EXISTS idx_price_history_date ON price_history(date);
       CREATE INDEX IF NOT EXISTS idx_price_history_asset ON price_history(asset_type);
