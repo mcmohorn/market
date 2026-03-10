@@ -8,9 +8,10 @@ interface Props {
   trades: TradeRecord[];
   highlightDate?: string | null;
   onTradeHover?: (date: string | null) => void;
+  onSelectSymbol?: (symbol: string) => void;
 }
 
-export default function TradeLog({ trades, highlightDate, onTradeHover }: Props) {
+export default function TradeLog({ trades, highlightDate, onTradeHover, onSelectSymbol }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [filterSymbol, setFilterSymbol] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>("date");
@@ -195,14 +196,23 @@ export default function TradeLog({ trades, highlightDate, onTradeHover }: Props)
                       {trade.action}
                     </span>
                   </td>
-                  <td className="py-1 px-2">
+                  <td className="py-1 px-2 flex items-center gap-1">
                     <button
-                      onClick={() => setFilterSymbol(filterSymbol === trade.symbol ? null : trade.symbol)}
-                      className={`hover:text-cyber-green cursor-pointer transition-colors ${
-                        filterSymbol === trade.symbol ? "text-cyber-green underline" : "text-cyber-text"
-                      }`}
+                      onClick={() => onSelectSymbol?.(trade.symbol)}
+                      className="hover:text-cyber-green cursor-pointer transition-colors text-cyber-text hover:underline"
                     >
                       {trade.symbol}
+                    </button>
+                    <button
+                      onClick={() => setFilterSymbol(filterSymbol === trade.symbol ? null : trade.symbol)}
+                      title={filterSymbol === trade.symbol ? "Unpin" : "Pin to filter"}
+                      className={`text-[10px] leading-none transition-colors ${
+                        filterSymbol === trade.symbol
+                          ? "text-cyber-green"
+                          : "text-cyber-muted/40 hover:text-cyber-green/70"
+                      }`}
+                    >
+                      📌
                     </button>
                   </td>
                   <td className="py-1 px-2 text-right text-cyber-text">{trade.quantity}</td>

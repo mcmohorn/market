@@ -109,9 +109,9 @@ export default function App() {
             <StockGrid assetType={assetType} timeJump={timeJump} onTimeJumpChange={setTimeJump} onSelectSymbol={setSelectedSymbol} />
           </>
         )}
-        {view === "simulation" && <SimulationPage assetType={assetType} />}
-        {view === "paper" && <PaperMoneyPage assetType={assetType} />}
-        {view === "news" && <MarketNewsPage />}
+        {view === "simulation" && <SimulationPage assetType={assetType} onSelectSymbol={setSelectedSymbol} />}
+        {view === "paper" && <PaperMoneyPage assetType={assetType} onSelectSymbol={setSelectedSymbol} />}
+        {view === "news" && <MarketNewsPage onSelectSymbol={setSelectedSymbol} />}
         {view === "recaps" && <RecapsPage />}
       </main>
       {selectedSymbol && (

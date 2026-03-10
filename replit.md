@@ -114,6 +114,12 @@ The application is built as a full-stack web application using TypeScript. The f
 Development: `bash dev.sh` (starts API server on 3001 + Vite on 5000)
 
 ## Recent Changes
+- 2026-03-10: Simulation duration buttons + clickable ticker symbols everywhere
+  - Quick duration buttons (1M, 3M, 6M, 1Y) in Simulation Lab set end date from start date
+  - All ticker symbols across all pages now open StockDetailModal on click
+  - TradeLog: symbol click opens detail modal, pushpin icon (📌) for filter/pin functionality
+  - PaperMoney: holdings + trade history symbols clickable for detail
+  - MarketNews: trending tickers + mentioned symbols in cards clickable (with event propagation fix)
 - 2026-03-09: Added Paper Money, Market News, Recaps, Predictions, Algorithm Versioning
   - Paper Money: localStorage-based simulated trading with balance chart and trade history
   - Market News: Reddit scraper for WSB, stocks, crypto, investing, options subs

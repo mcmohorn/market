@@ -85,7 +85,7 @@ function getSubredditColor(sub: string): string {
   return colors[sub] || "bg-cyber-muted/20 text-cyber-muted border-cyber-muted/30";
 }
 
-export default function MarketNewsPage() {
+export default function MarketNewsPage({ onSelectSymbol }: { onSelectSymbol?: (symbol: string) => void }) {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [summary, setSummary] = useState<NewsSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -178,13 +178,14 @@ export default function MarketNewsPage() {
               </div>
               <div className="flex flex-wrap gap-1">
                 {summary.mentionedSymbols.slice(0, 12).map((s) => (
-                  <span
+                  <button
                     key={s.symbol}
-                    className="px-2 py-0.5 bg-cyber-green/10 border border-cyber-green/20 rounded text-[11px] text-cyber-green font-mono"
+                    onClick={() => onSelectSymbol?.(s.symbol)}
+                    className="px-2 py-0.5 bg-cyber-green/10 border border-cyber-green/20 rounded text-[11px] text-cyber-green font-mono hover:bg-cyber-green/20 hover:border-cyber-green/40 transition-colors cursor-pointer"
                   >
                     ${s.symbol}
                     <span className="text-cyber-muted ml-1">x{s.count}</span>
-                  </span>
+                  </button>
                 ))}
                 {summary.mentionedSymbols.length === 0 && (
                   <span className="text-xs text-cyber-muted">No tickers detected</span>
@@ -373,12 +374,13 @@ export default function MarketNewsPage() {
               {item.mentioned_symbols && (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {item.mentioned_symbols.split(",").filter(Boolean).map((sym) => (
-                    <span
+                    <button
                       key={sym}
-                      className="px-1.5 py-0.5 bg-cyber-green/5 border border-cyber-green/15 rounded text-[10px] text-cyber-green font-mono"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSelectSymbol?.(sym.trim()); }}
+                      className="px-1.5 py-0.5 bg-cyber-green/5 border border-cyber-green/15 rounded text-[10px] text-cyber-green font-mono hover:bg-cyber-green/20 hover:border-cyber-green/40 transition-colors cursor-pointer"
                     >
                       ${sym}
-                    </span>
+                    </button>
                   ))}
                 </div>
               )}

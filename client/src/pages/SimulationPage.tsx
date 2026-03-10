@@ -34,6 +34,7 @@ type Tab = "simulate" | "compare" | "conditions";
 
 interface SimulationPageProps {
   assetType: string;
+  onSelectSymbol?: (symbol: string) => void;
 }
 
 const STOCK_EXCHANGES = ["ALL", "NYSE", "NASDAQ", "ARCA", "BATS", "AMEX"];
@@ -65,7 +66,7 @@ function savePresets(presets: SimPreset[]) {
   localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
 }
 
-export default function SimulationPage({ assetType }: SimulationPageProps) {
+export default function SimulationPage({ assetType, onSelectSymbol }: SimulationPageProps) {
   const [tab, setTab] = useState<Tab>("simulate");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -245,6 +246,32 @@ export default function SimulationPage({ assetType }: SimulationPageProps) {
                   className="w-full bg-cyber-bg border border-cyber-grid text-cyber-text px-2 py-1 text-sm font-mono focus:border-cyber-green outline-none"
                 />
               </label>
+
+              <div>
+                <span className="text-cyber-muted text-xs font-mono block mb-1">Duration (from start)</span>
+                <div className="flex gap-1">
+                  {[
+                    { label: "1M", months: 1 },
+                    { label: "3M", months: 3 },
+                    { label: "6M", months: 6 },
+                    { label: "1Y", months: 12 },
+                  ].map(({ label, months }) => (
+                    <button
+                      key={label}
+                      onClick={() => {
+                        const d = new Date(startDate);
+                        d.setMonth(d.getMonth() + months);
+                        const today = new Date().toISOString().split("T")[0];
+                        const newEnd = d.toISOString().split("T")[0];
+                        setEndDate(newEnd > today ? today : newEnd);
+                      }}
+                      className="flex-1 px-2 py-1 text-[11px] font-mono uppercase border border-cyber-green/30 text-cyber-green hover:bg-cyber-green/10 transition-all"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               <label className="block">
                 <span className="text-cyber-muted text-xs font-mono">Initial Capital ($)</span>
@@ -526,7 +553,7 @@ export default function SimulationPage({ assetType }: SimulationPageProps) {
           {tab === "simulate" && simResult && (
             <>
               <EquityCurve result={simResult} onDateClick={setTradeLogDate} highlightDate={hoveredTradeDate} />
-              <TradeLog trades={simResult.trades} highlightDate={tradeLogDate} onTradeHover={setHoveredTradeDate} />
+              <TradeLog trades={simResult.trades} highlightDate={tradeLogDate} onTradeHover={setHoveredTradeDate} onSelectSymbol={onSelectSymbol} />
               <SimulationSummary result={simResult} />
             </>
           )}

@@ -50,7 +50,7 @@ interface PriceMap {
   [symbol: string]: { price: number; change: number; signal: string };
 }
 
-export default function PaperMoneyPage({ assetType }: { assetType: string }) {
+export default function PaperMoneyPage({ assetType, onSelectSymbol }: { assetType: string; onSelectSymbol?: (symbol: string) => void }) {
   const [portfolio, setPortfolio] = useState<Portfolio>(loadPortfolio);
   const [prices, setPrices] = useState<PriceMap>({});
   const [addCashAmount, setAddCashAmount] = useState("");
@@ -406,7 +406,9 @@ export default function PaperMoneyPage({ assetType }: { assetType: string }) {
                 const pnlPct = ((current - h.avgCost) / h.avgCost) * 100;
                 return (
                   <tr key={h.symbol} className="border-b border-cyber-grid/50 hover:bg-cyber-green/5">
-                    <td className="py-2 text-cyber-text font-bold">{h.symbol}</td>
+                    <td className="py-2 text-cyber-text font-bold">
+                      <button onClick={() => onSelectSymbol?.(h.symbol)} className="hover:text-cyber-green hover:underline transition-colors">{h.symbol}</button>
+                    </td>
                     <td className="py-2 text-right text-cyber-text">{h.quantity}</td>
                     <td className="py-2 text-right text-cyber-muted">${h.avgCost.toFixed(2)}</td>
                     <td className="py-2 text-right text-cyber-text">${current.toFixed(2)}</td>
@@ -543,7 +545,11 @@ export default function PaperMoneyPage({ assetType }: { assetType: string }) {
                         {t.action}
                       </span>
                     </td>
-                    <td className="py-1.5 text-cyber-text">{t.symbol}</td>
+                    <td className="py-1.5 text-cyber-text">
+                      {t.symbol !== "CASH" ? (
+                        <button onClick={() => onSelectSymbol?.(t.symbol)} className="hover:text-cyber-green hover:underline transition-colors">{t.symbol}</button>
+                      ) : t.symbol}
+                    </td>
                     <td className="py-1.5 text-right text-cyber-text">{t.action === "DEPOSIT" ? "—" : t.quantity}</td>
                     <td className="py-1.5 text-right text-cyber-muted">{t.action === "DEPOSIT" ? "—" : `$${t.price.toFixed(2)}`}</td>
                     <td className={`py-1.5 text-right ${
