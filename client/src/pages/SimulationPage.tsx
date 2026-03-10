@@ -27,6 +27,7 @@ const DEFAULT_PARAMS: StrategyParams = {
   maxTradesPerDay: 10,
   minHoldDays: 0,
   minDataDays: 14,
+  minTradeValue: 20,
   useEndOfDayPrices: true,
 };
 
@@ -399,6 +400,24 @@ export default function SimulationPage({ assetType, onSelectSymbol }: Simulation
                   />
                   <span className="text-cyber-muted text-[10px] font-mono block mt-1">
                     Minimum days of price data required before considering a buy for any symbol.
+                  </span>
+                </label>
+
+                <label className="block">
+                  <span className="text-cyber-muted text-xs font-mono flex justify-between">
+                    <span>Min Trade Value ($)</span>
+                    <span className="text-cyber-green">${params.minTradeValue}</span>
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={params.minTradeValue}
+                    onChange={e => updateParam("minTradeValue", Number(e.target.value))}
+                    className="w-full bg-cyber-bg border border-cyber-grid text-cyber-text px-2 py-1 text-sm font-mono focus:border-cyber-green outline-none"
+                  />
+                  <span className="text-cyber-muted text-[10px] font-mono block mt-1">
+                    Skip trades below this dollar amount to minimize transaction costs.
                   </span>
                 </label>
 

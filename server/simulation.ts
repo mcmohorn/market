@@ -346,6 +346,7 @@ export async function runSimulation(
       if (quantity <= 0) continue;
 
       const total = quantity * execPrice;
+      if (total < (params.minTradeValue ?? 20)) continue;
       cash -= total;
 
       positions.set(cand.symbol, {

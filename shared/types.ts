@@ -78,6 +78,7 @@ export interface StrategyParams {
   maxTradesPerDay: number;
   minHoldDays: number;
   minDataDays: number;
+  minTradeValue: number;
   useEndOfDayPrices: boolean;
 }
 
@@ -99,6 +100,7 @@ export const DEFAULT_STRATEGY: StrategyParams = {
   maxTradesPerDay: 10,
   minHoldDays: 0,
   minDataDays: 14,
+  minTradeValue: 20,
   useEndOfDayPrices: true,
 };
 
