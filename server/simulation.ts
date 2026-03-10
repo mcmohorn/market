@@ -251,6 +251,7 @@ export async function runSimulation(
         indicator: ind,
         diffAdjusted: ind.macdHistogramAdjusted,
         newBuyScore,
+        dataPointsSoFar: barIdx + 1,
       });
     }
 
@@ -326,6 +327,7 @@ export async function runSimulation(
       if (positions.has(cand.symbol)) continue;
       if (cand.bar.close > params.maxSharePrice) continue;
       if (cand.bar.close <= 0) continue;
+      if (params.minDataDays > 0 && cand.dataPointsSoFar < params.minDataDays) continue;
 
       const isBuySignal = cand.indicator.buySignal &&
         cand.indicator.macdHistogramAdjusted * 10000 > params.minBuySignal &&

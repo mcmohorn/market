@@ -26,6 +26,7 @@ const DEFAULT_PARAMS: StrategyParams = {
   newBuyLookbackDays: 5,
   maxTradesPerDay: 10,
   minHoldDays: 0,
+  minDataDays: 14,
   useEndOfDayPrices: true,
 };
 
@@ -353,6 +354,24 @@ export default function SimulationPage({ assetType }: SimulationPageProps) {
                   />
                   <span className="text-cyber-muted text-[10px] font-mono block mt-1">
                     Hold positions at least this many days before selling (stop-loss still triggers).
+                  </span>
+                </label>
+
+                <label className="block">
+                  <span className="text-cyber-muted text-xs font-mono flex justify-between">
+                    <span>Min Data Days</span>
+                    <span className="text-cyber-green">{params.minDataDays}</span>
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={90}
+                    value={params.minDataDays}
+                    onChange={e => updateParam("minDataDays", Number(e.target.value))}
+                    className="w-full accent-[#00ff41] h-1"
+                  />
+                  <span className="text-cyber-muted text-[10px] font-mono block mt-1">
+                    Minimum days of price data required before considering a buy for any symbol.
                   </span>
                 </label>
 

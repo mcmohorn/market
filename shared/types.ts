@@ -77,6 +77,7 @@ export interface StrategyParams {
   newBuyLookbackDays: number;
   maxTradesPerDay: number;
   minHoldDays: number;
+  minDataDays: number;
   useEndOfDayPrices: boolean;
 }
 
@@ -97,6 +98,7 @@ export const DEFAULT_STRATEGY: StrategyParams = {
   newBuyLookbackDays: 5,
   maxTradesPerDay: 10,
   minHoldDays: 0,
+  minDataDays: 14,
   useEndOfDayPrices: true,
 };
 
