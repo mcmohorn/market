@@ -29,7 +29,7 @@ steps:
       - '--port'
       - '8080'
       - '--memory'
-      - '1Gi'
+      - '512Mi'
       - '--cpu'
       - '1'
       - '--min-instances'
@@ -37,11 +37,20 @@ steps:
       - '--max-instances'
       - '3'
       - '--allow-unauthenticated'
+      - '--service-account'
+      - '${_CLOUDRUN_SA}'
+      - '--add-cloudsql-instances'
+      - '${_CLOUDSQL_CONNECTION}'
+      - '--set-env-vars'
+      - 'NODE_ENV=production,DATABASE_URL=postgresql://mateo:${_DB_PASSWORD}@/mateo?host=/cloudsql/${_CLOUDSQL_CONNECTION}'
 
 substitutions:
   _REGION: us-central1
   _SERVICE_NAME: mateo
   _REPOSITORY: mateo
+  _CLOUDSQL_CONNECTION: ''
+  _CLOUDRUN_SA: ''
+  _DB_PASSWORD: ''
 
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE_NAME}:$COMMIT_SHA'

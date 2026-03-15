@@ -76,6 +76,12 @@ resource "google_project_iam_member" "cloudbuild_role_cloudrun" {
   member = "serviceAccount:${google_service_account.cloudbuild_service_account.email}"
 }
 
+resource "google_project_iam_member" "cloudbuild_role_artifact_registry_writer" {
+  project = var.project_id
+  role    = "roles/artifactregistry.writer"
+  member  = "serviceAccount:${google_service_account.cloudbuild_service_account.email}"
+}
+
 output "cloudbuilder_service_account_id" {
   value = google_service_account.cloudbuild_service_account.id
 }
