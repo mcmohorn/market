@@ -24,3 +24,8 @@ go.work.sum
 .env
 
 /node_modules
+
+/infra/.terraform/
+/infra/.terraform.lock.hcl
+/infra/.terraform.tfstate
+/infra/.terraform.tfstate.backup
