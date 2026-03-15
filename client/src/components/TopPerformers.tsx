@@ -6,6 +6,7 @@ interface Props {
   assetType: string;
   asOfDate?: string;
   onSelectSymbol: (symbol: string) => void;
+  limit?: number;
 }
 
 function TickerCard({ item, onClick }: { item: TopPerformer; onClick: () => void }) {
@@ -45,7 +46,7 @@ function TickerCard({ item, onClick }: { item: TopPerformer; onClick: () => void
   );
 }
 
-export default function TopPerformers({ assetType, asOfDate, onSelectSymbol }: Props) {
+export default function TopPerformers({ assetType, asOfDate, onSelectSymbol, limit }: Props) {
   const [data, setData] = useState<{
     gainers: TopPerformer[];
     losers: TopPerformer[];
@@ -62,11 +63,12 @@ export default function TopPerformers({ assetType, asOfDate, onSelectSymbol }: P
     return null;
   }
 
+  const slice = limit != null ? limit : undefined;
   return (
     <div className="space-y-3">
-      <Section title="TOP GAINERS" items={data.gainers} onSelect={onSelectSymbol} />
-      <Section title="STRONG BUY SIGNALS" items={data.strongBuys} onSelect={onSelectSymbol} />
-      <Section title="TOP LOSERS" items={data.losers} onSelect={onSelectSymbol} />
+      <Section title="TOP GAINERS" items={slice != null ? data.gainers.slice(0, slice) : data.gainers} onSelect={onSelectSymbol} />
+      <Section title="STRONG BUY SIGNALS" items={slice != null ? data.strongBuys.slice(0, slice) : data.strongBuys} onSelect={onSelectSymbol} />
+      <Section title="TOP LOSERS" items={slice != null ? data.losers.slice(0, slice) : data.losers} onSelect={onSelectSymbol} />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import type { SignalAlert } from "../lib/api";
 interface Props {
   assetType: string;
   onSelectSymbol: (symbol: string) => void;
+  limit?: number;
 }
 
 function formatDate(dateStr: string): string {
@@ -94,7 +95,7 @@ function AlertCard({ alert, onClick }: { alert: SignalAlert; onClick: () => void
   );
 }
 
-export default function SignalAlerts({ assetType, onSelectSymbol }: Props) {
+export default function SignalAlerts({ assetType, onSelectSymbol, limit }: Props) {
   const [alerts, setAlerts] = useState<SignalAlert[]>([]);
 
   useEffect(() => {
@@ -103,7 +104,8 @@ export default function SignalAlerts({ assetType, onSelectSymbol }: Props) {
       .catch(() => setAlerts([]));
   }, [assetType]);
 
-  if (alerts.length === 0) return null;
+  const displayed = limit != null ? alerts.slice(0, limit) : alerts;
+  if (displayed.length === 0) return null;
 
   return (
     <div>
@@ -113,7 +115,7 @@ export default function SignalAlerts({ assetType, onSelectSymbol }: Props) {
         <span className="text-cyber-muted">— Recently flipped BUY↔SELL (slow movers ranked higher)</span>
       </div>
       <div className="flex gap-2 overflow-x-auto pb-2">
-        {alerts.map((alert) => (
+        {displayed.map((alert) => (
           <AlertCard
             key={alert.symbol}
             alert={alert}

@@ -46,3 +46,18 @@ externalPort = 3002
 deploymentTarget = "autoscale"
 run = ["node", "dist/server/index.js"]
 build = ["bash", "-c", "npm run build"]
+
+[userenv]
+
+[userenv.shared]
+FIREBASE_API_KEY = "AIzaSyD7MMLD4BEYC26w9lMou_f8k0t_0AldlEY"
+FIREBASE_APP_ID = "1:484755720732:web:2a45957a2c217f433e6dd9"
+FIREBASE_MESSAGING_SENDER_ID = "484755720732"
+FIREBASE_PROJECT_ID = "market-487302"
+FIREBASE_AUTH_DOMAIN = "market-487302.firebaseapp.com"
+PRO_WHITELIST = "mcmohorn@gmail.com,pbretts@yahoo.com"
+VITE_FIREBASE_API_KEY = "AIzaSyD7MMLD4BEYC26w9lMou_f8k0t_0AldlEY"
+VITE_FIREBASE_APP_ID = "1:484755720732:web:2a45957a2c217f433e6dd9"
+VITE_FIREBASE_MESSAGING_SENDER_ID = "484755720732"
+VITE_FIREBASE_PROJECT_ID = "market-487302"
+VITE_FIREBASE_AUTH_DOMAIN = "market-487302.firebaseapp.com"

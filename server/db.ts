@@ -126,6 +126,62 @@ export async function initDB() {
       );
       CREATE INDEX IF NOT EXISTS idx_daily_recaps_date ON daily_recaps(recap_date);
       CREATE INDEX IF NOT EXISTS idx_daily_recaps_type ON daily_recaps(recap_type);
+
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        email VARCHAR(255) NOT NULL UNIQUE,
+        display_name VARCHAR(255) DEFAULT '',
+        account_type VARCHAR(20) DEFAULT 'free',
+        notification_email_enabled BOOLEAN DEFAULT false,
+        firebase_uid VARCHAR(255) DEFAULT '',
+        created_at TIMESTAMP DEFAULT NOW(),
+        last_login TIMESTAMP DEFAULT NOW()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
+      CREATE INDEX IF NOT EXISTS idx_users_firebase_uid ON users(firebase_uid);
+
+      CREATE TABLE IF NOT EXISTS watchlist (
+        id SERIAL PRIMARY KEY,
+        user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        symbol VARCHAR(20) NOT NULL,
+        asset_type VARCHAR(20) DEFAULT 'stock',
+        last_known_signal VARCHAR(10) DEFAULT '',
+        added_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_watchlist_user_symbol ON watchlist(user_id, symbol, asset_type);
+      CREATE INDEX IF NOT EXISTS idx_watchlist_symbol ON watchlist(symbol);
+
+      CREATE TABLE IF NOT EXISTS saved_simulations (
+        id SERIAL PRIMARY KEY,
+        user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(255) DEFAULT '',
+        asset_type VARCHAR(20) DEFAULT 'stock',
+        params JSONB NOT NULL,
+        result_summary JSONB DEFAULT '{}',
+        start_date DATE,
+        end_date DATE,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_saved_sims_user ON saved_simulations(user_id);
+
+      CREATE TABLE IF NOT EXISTS notifications (
+        id SERIAL PRIMARY KEY,
+        user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        symbol VARCHAR(20) NOT NULL,
+        asset_type VARCHAR(20) DEFAULT 'stock',
+        message TEXT NOT NULL,
+        signal_from VARCHAR(10) DEFAULT '',
+        signal_to VARCHAR(10) DEFAULT '',
+        read BOOLEAN DEFAULT false,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
+      CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(user_id, read);
+
+      INSERT INTO users (email, display_name, account_type) VALUES
+        ('mcmohorn@gmail.com', 'MC Mohorn', 'pro'),
+        ('pbretts@yahoo.com', 'P Bretts', 'pro')
+      ON CONFLICT (email) DO UPDATE SET account_type = 'pro';
     `);
     console.log("Database tables initialized");
   } finally {

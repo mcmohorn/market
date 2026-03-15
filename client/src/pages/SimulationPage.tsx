@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import type { SimulationResult, StrategyParams, StrategyComparison, MarketConditionResult } from "../../../shared/types";
 import { runSimulation, compareStrategies, analyzeMarketConditions } from "../lib/api";
+import { useAuth } from "../context/AuthContext";
 import EquityCurve from "../components/EquityCurve";
 import TradeLog from "../components/TradeLog";
 import SimulationSummary from "../components/SimulationSummary";
@@ -36,6 +37,7 @@ type Tab = "simulate" | "compare" | "conditions";
 interface SimulationPageProps {
   assetType: string;
   onSelectSymbol?: (symbol: string) => void;
+  isPro?: boolean;
 }
 
 const STOCK_EXCHANGES = ["ALL", "NYSE", "NASDAQ", "ARCA", "BATS", "AMEX"];
@@ -67,7 +69,7 @@ function savePresets(presets: SimPreset[]) {
   localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
 }
 
-export default function SimulationPage({ assetType, onSelectSymbol }: SimulationPageProps) {
+export default function SimulationPage({ assetType, onSelectSymbol, isPro }: SimulationPageProps) {
   const [tab, setTab] = useState<Tab>("simulate");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -574,6 +576,13 @@ export default function SimulationPage({ assetType, onSelectSymbol }: Simulation
               <EquityCurve result={simResult} onDateClick={setTradeLogDate} highlightDate={hoveredTradeDate} />
               <TradeLog trades={simResult.trades} highlightDate={tradeLogDate} onTradeHover={setHoveredTradeDate} onSelectSymbol={onSelectSymbol} />
               <SimulationSummary result={simResult} />
+              <SaveSimulationButton
+                simResult={simResult}
+                params={params}
+                startDate={startDate}
+                endDate={endDate}
+                assetType={assetType}
+              />
             </>
           )}
 
@@ -600,6 +609,83 @@ export default function SimulationPage({ assetType, onSelectSymbol }: Simulation
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+interface SaveSimulationButtonProps {
+  simResult: SimulationResult;
+  params: StrategyParams;
+  startDate: string;
+  endDate: string;
+  assetType: string;
+}
+
+function SaveSimulationButton({ simResult, params, startDate, endDate, assetType }: SaveSimulationButtonProps) {
+  const { firebaseUser, user } = useAuth();
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [simName, setSimName] = useState("");
+
+  if (!user || user.account_type !== "pro") {
+    return (
+      <div className="border border-cyber-grid/30 p-3 text-center text-cyber-muted/50 font-mono text-xs">
+        Pro users can save simulations to their history
+      </div>
+    );
+  }
+
+  if (saved) {
+    return (
+      <div className="border border-cyber-green/30 p-3 text-center text-cyber-green font-mono text-xs">
+        ✓ Simulation saved to your history
+      </div>
+    );
+  }
+
+  return (
+    <div className="border border-cyber-grid p-3 space-y-2">
+      <div className="text-[10px] text-cyber-green uppercase tracking-widest font-mono">Save to History</div>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          placeholder="Simulation name (optional)"
+          value={simName}
+          onChange={e => setSimName(e.target.value)}
+          className="flex-1 bg-cyber-bg border border-cyber-border text-cyber-text text-xs font-mono px-2 py-1 focus:border-cyber-green outline-none"
+        />
+        <button
+          disabled={saving}
+          onClick={async () => {
+            if (!firebaseUser) return;
+            setSaving(true);
+            try {
+              const token = await firebaseUser.getIdToken();
+              const name = simName.trim() || `${assetType.toUpperCase()} ${startDate} – ${endDate}`;
+              await fetch("/api/simulations", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify({
+                  name,
+                  params: { ...params, startDate, endDate, assetType },
+                  result_summary: {
+                    totalReturn: simResult.totalReturn,
+                    totalReturnPct: simResult.totalReturnPct,
+                    tradeCount: simResult.trades?.length ?? 0,
+                    winRate: simResult.winRate,
+                    maxDrawdown: simResult.maxDrawdown,
+                  },
+                }),
+              });
+              setSaved(true);
+            } catch {}
+            setSaving(false);
+          }}
+          className="px-4 py-1 text-xs font-mono uppercase tracking-wider border border-cyber-green/60 text-cyber-green hover:bg-cyber-green/10 transition-all disabled:opacity-50"
+        >
+          {saving ? "Saving..." : "Save"}
+        </button>
       </div>
     </div>
   );

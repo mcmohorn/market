@@ -13,9 +13,10 @@ interface Props {
   timeJump: TimeJump;
   onTimeJumpChange: (jump: TimeJump) => void;
   onSelectSymbol: (symbol: string) => void;
+  limit?: number;
 }
 
-export default function StockGrid({ assetType, timeJump, onTimeJumpChange, onSelectSymbol }: Props) {
+export default function StockGrid({ assetType, timeJump, onTimeJumpChange, onSelectSymbol, limit }: Props) {
   const [rowData, setRowData] = useState<StockAnalysis[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -46,7 +47,7 @@ export default function StockGrid({ assetType, timeJump, onTimeJumpChange, onSel
           sort: params?.sort || sortCol,
           order: params?.order || sortDir,
           search: params?.search ?? search,
-          limit: 200,
+          limit: limit ?? 200,
           offset: 0,
           asset_type: assetType,
           as_of_date: getAsOfDate(j),

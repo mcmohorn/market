@@ -50,7 +50,7 @@ interface PriceMap {
   [symbol: string]: { price: number; change: number; signal: string };
 }
 
-export default function PaperMoneyPage({ assetType, onSelectSymbol }: { assetType: string; onSelectSymbol?: (symbol: string) => void }) {
+export default function PaperMoneyPage({ assetType, onSelectSymbol, isPro }: { assetType: string; onSelectSymbol?: (symbol: string) => void; isPro?: boolean }) {
   const [portfolio, setPortfolio] = useState<Portfolio>(loadPortfolio);
   const [prices, setPrices] = useState<PriceMap>({});
   const [addCashAmount, setAddCashAmount] = useState("");

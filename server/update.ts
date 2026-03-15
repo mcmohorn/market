@@ -2,6 +2,7 @@ import "dotenv/config";
 import { pool, initDB } from "./db";
 import { analyzeStock, getSignal, getSignalStrength, countSignalChanges, lastSignalChangeDate } from "../shared/indicators";
 import type { StockBar } from "../shared/types";
+import { generateSnapshot } from "./generate-snapshot";
 
 const ALPACA_KEY = process.env.ALPACA_API_KEY_ID || "";
 const ALPACA_SECRET = process.env.ALPACA_API_KEY_SECRET || "";
@@ -345,13 +346,87 @@ async function main() {
 
   if (allUpdated.length > 0) {
     await recomputeSignals(allUpdated);
+    await checkWatchlistSignals(allUpdated);
   } else {
     console.log("\nNo new data - signals are current");
   }
 
+  await generateSnapshot();
+
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
   console.log(`\n=== Update complete in ${elapsed}s (${allUpdated.length} symbols updated) ===`);
   process.exit(0);
+}
+
+async function checkWatchlistSignals(updatedSymbols: string[]) {
+  if (updatedSymbols.length === 0) return;
+  try {
+    const watchlistResult = await pool.query(
+      `SELECT w.id, w.user_id, w.symbol, w.asset_type, w.last_known_signal,
+              u.email, u.notification_email_enabled,
+              cs.signal as new_signal
+       FROM watchlist w
+       JOIN users u ON u.id = w.user_id
+       LEFT JOIN computed_signals cs ON cs.symbol = w.symbol AND cs.asset_type = w.asset_type
+       WHERE w.symbol = ANY($1)`,
+      [updatedSymbols]
+    );
+
+    for (const row of watchlistResult.rows) {
+      if (!row.new_signal || row.new_signal === row.last_known_signal) continue;
+
+      const message = `${row.symbol} signal changed: ${row.last_known_signal || "?"} → ${row.new_signal}`;
+      console.log(`[Watchlist] ${message} (user: ${row.email})`);
+
+      await pool.query(
+        `INSERT INTO notifications (user_id, symbol, asset_type, message, signal_from, signal_to)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [row.user_id, row.symbol, row.asset_type, message, row.last_known_signal || "", row.new_signal]
+      );
+
+      await pool.query(
+        `UPDATE watchlist SET last_known_signal = $1 WHERE id = $2`,
+        [row.new_signal, row.id]
+      );
+
+      if (row.notification_email_enabled && row.email) {
+        await sendSignalEmail(row.email, row.symbol, row.last_known_signal || "?", row.new_signal);
+      }
+    }
+
+    console.log(`\n[Watchlist] Checked ${watchlistResult.rows.length} watchlist entries`);
+  } catch (err) {
+    console.error("[Watchlist] Error checking signals:", err);
+  }
+}
+
+async function sendSignalEmail(email: string, symbol: string, from: string, to: string) {
+  try {
+    const nodemailer = await import("nodemailer");
+    const transporter = nodemailer.default.createTransport({
+      host: process.env.SMTP_HOST || "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.SMTP_USER || "",
+        pass: process.env.SMTP_PASS || "",
+      },
+    });
+    if (!process.env.SMTP_USER) {
+      console.log(`[Email] SMTP not configured — would email ${email}: ${symbol} ${from}→${to}`);
+      return;
+    }
+    await transporter.sendMail({
+      from: `MATEO <${process.env.SMTP_USER}>`,
+      to: email,
+      subject: `MATEO Signal Alert: ${symbol} changed to ${to}`,
+      text: `Your watched symbol ${symbol} has changed signal from ${from} to ${to}.\n\nThis is not financial advice — for research purposes only.\n\nMATEO Market Analysis Terminal`,
+      html: `<p>Your watched symbol <strong>${symbol}</strong> has changed signal from <strong>${from}</strong> to <strong>${to}</strong>.</p><p style="color:#888;font-size:12px;">This is not financial advice — for research purposes only.</p><p>MATEO Market Analysis Terminal</p>`,
+    });
+    console.log(`[Email] Sent signal alert to ${email} for ${symbol}`);
+  } catch (err) {
+    console.error(`[Email] Failed to send to ${email}:`, err);
+  }
 }
 
 main().catch(err => {

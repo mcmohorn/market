@@ -65,6 +65,10 @@ The application is built as a full-stack web application using TypeScript. The f
 - `algorithm_versions` - Algorithm version tracking (version_num, params JSONB, accuracy_pct, total_predictions, correct_predictions)
 - `market_news` - Cached Reddit/community news (source, subreddit, title, url, score, sector, asset_type, mentioned_symbols)
 - `daily_recaps` - Generated recap summaries (recap_date, recap_type, top_movers JSONB, prediction_accuracy JSONB)
+- `users` - Authenticated users (email, display_name, account_type free/pro, firebase_uid, notification_email_enabled)
+- `watchlist` - Per-user watched symbols (user_id, symbol, asset_type, last_known_signal)
+- `saved_simulations` - Per-user saved simulation runs (user_id, name, params JSONB, result_summary JSONB, start/end date)
+- `notifications` - Per-user signal change alerts (user_id, symbol, message, signal_from, signal_to, read)
 - All tables use `asset_type` column ('stock' or 'crypto') to differentiate data
 
 ### API Endpoints
@@ -87,13 +91,35 @@ The application is built as a full-stack web application using TypeScript. The f
 - `GET /api/algorithm/versions` - List algorithm versions with accuracy
 - `POST /api/algorithm/version` - Create new algorithm version
 - `GET /api/paper-money/signals` - Get signals for paper money holdings
+- `POST /api/auth/login` - Verify Firebase ID token, upsert user, return AppUser
+- `GET /api/auth/me` - Return current user from token
+- `GET /api/watchlist` - Get user's watchlist with current signals
+- `POST /api/watchlist` - Add symbol to watchlist
+- `DELETE /api/watchlist/:symbol` - Remove from watchlist
+- `GET /api/simulations` - Get user's saved simulations
+- `POST /api/simulations` - Save simulation (pro only)
+- `DELETE /api/simulations/:id` - Delete saved simulation
+- `GET /api/notifications` - Get user's notifications (unread first)
+- `POST /api/notifications/read` - Mark all notifications read
+- `GET /api/snapshot` - Static market snapshot (no auth — used by anonymous users)
 
 ### App Pages
-1. **Market Scanner** - Main dashboard with stats, signals, top performers, stock grid
-2. **Simulation Lab** - Backtesting with strategy comparison and market conditions
-3. **Paper Money** - Simulated trading with localStorage (add cash, buy/sell, balance chart)
+1. **Market Scanner** - Main dashboard with stats, signals, top performers, stock grid (anonymous: top 5 preview)
+2. **Simulation Lab** - Backtesting with strategy comparison and market conditions (pro only)
+3. **Paper Money** - Simulated trading with localStorage (free users) or DB-persisted (pro)
 4. **Market News** - Reddit news aggregation with filters, sentiment summary, hot topics
 5. **Recaps** - Daily/Weekly/Monthly recaps with prediction accuracy, algorithm version tracking
+6. **Watchlist** - Per-user watched symbols with current signals; add/remove (pro only)
+7. **Your History** - Saved simulations (pro) + "what if" default preset runners from join date
+8. **Notifications** - Signal change alerts for watchlist symbols (pro only)
+9. **About** - Platform description, features, not-financial-advice disclaimer
+
+### Auth & Access Tiers
+- **Anonymous**: Market Scanner top 5 preview, News, Recaps, About — no stock detail modal
+- **Free**: Full scanner, Paper Money (localStorage), News, Recaps, About, History
+- **Pro** (mcmohorn@gmail.com, pbretts@yahoo.com): All tabs + Simulation Lab, Watchlist, Notifications, save simulations to DB
+- Auth via Firebase (Google + Yahoo OAuth); server verifies ID tokens with firebase-admin
+- Pro whitelist pre-inserted in DB via ON CONFLICT upsert in server/db.ts
 
 ### Features
 - **Sell Alert Banner** - Checks paper money holdings against current signals on page load, shows prominent red alert when SELL signal detected
@@ -101,6 +127,10 @@ The application is built as a full-stack web application using TypeScript. The f
 - **News Scraping** - Scrapes r/wallstreetbets, r/stocks, r/cryptocurrency, r/investing, r/options using Reddit JSON API
 - **Prediction Tracking** - Stores BUY/SELL predictions, compares to actual price movement next day
 - **Algorithm Versioning** - Tracks parameter changes, accuracy per version, helps identify best-performing algorithms
+- **Watchlist Notifications** - update.ts checks watchlist after recomputing signals; inserts notifications; sends email via nodemailer if SMTP configured
+- **Static Snapshot** - server/generate-snapshot.ts writes client/public/snapshot.json; called at end of update run; served via /api/snapshot for anonymous clients
+- **Watch Button** - StockDetailModal shows "+ Watch" button for pro users to add to watchlist directly
+- **Save Simulation** - SimulationPage shows "Save to History" panel for pro users after running a sim
 
 ### Seeding Commands
 - `yarn seed-db` / `npx tsx server/seed.ts` - Full seed (fetches all stocks from Alpaca + crypto from Tiingo, computes signals)
@@ -114,6 +144,19 @@ The application is built as a full-stack web application using TypeScript. The f
 Development: `bash dev.sh` (starts API server on 3001 + Vite on 5000)
 
 ## Recent Changes
+- 2026-03-15: Firebase auth, tiered access (anon/free/pro), watchlist, notifications, history
+  - Firebase Google + Yahoo OAuth login with server-side token verification (firebase-admin)
+  - DB tables: users, watchlist, saved_simulations, notifications
+  - Pro whitelist: mcmohorn@gmail.com, pbretts@yahoo.com (pre-inserted via ON CONFLICT upsert)
+  - Anonymous: top 5 preview in scanner, no stock detail modal, Sign In CTA
+  - Free: full scanner, paper money (localStorage), news, recaps, about, history
+  - Pro: + simulation lab, watchlist, notifications, save simulations to DB
+  - StockDetailModal: "+ Watch" button for pro users (adds to watchlist via API)
+  - SimulationPage: "Save to History" panel for pro users after running simulation
+  - WatchlistPage, NotificationsPage, HistoryPage, LoginPage, AboutPage
+  - update.ts: after signal recompute, checks watchlist for signal changes, inserts notifications, sends emails via nodemailer (requires SMTP_USER/SMTP_PASS env vars)
+  - server/generate-snapshot.ts: generates client/public/snapshot.json after each update run
+  - server/auth.ts: verifyFirebaseToken, upsertUser, requireAuth, requirePro middleware
 - 2026-03-10: Simulation duration buttons + clickable ticker symbols everywhere
   - Quick duration buttons (1M, 3M, 6M, 1Y) in Simulation Lab set end date from start date
   - All ticker symbols across all pages now open StockDetailModal on click

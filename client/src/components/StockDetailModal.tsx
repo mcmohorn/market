@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { fetchStockDetail } from "../lib/api";
 import type { StockDetail, IndicatorData } from "../lib/types";
+import { useAuth } from "../context/AuthContext";
 import {
   ComposedChart, Line, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, ReferenceLine, ReferenceArea, CartesianGrid, Area, Cell,
@@ -9,14 +10,19 @@ import {
 interface Props {
   symbol: string;
   onClose: () => void;
+  isPro?: boolean;
+  assetType?: string;
 }
 
 type SortField = "date" | "price" | "macdHistogram" | "rsi";
 type SortDir = "asc" | "desc";
 
-export default function StockDetailModal({ symbol, onClose }: Props) {
+export default function StockDetailModal({ symbol, onClose, isPro, assetType: modalAssetType }: Props) {
+  const { firebaseUser } = useAuth();
   const [detail, setDetail] = useState<StockDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [watched, setWatched] = useState(false);
+  const [watching, setWatching] = useState(false);
 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -150,12 +156,41 @@ export default function StockDetailModal({ symbol, onClose }: Props) {
               </>
             )}
           </div>
-          <button
-            onClick={onClose}
-            className="text-cyber-muted hover:text-cyber-red text-lg font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-cyber-red/10 transition-all"
-          >
-            X
-          </button>
+          <div className="flex items-center gap-2">
+            {isPro && (
+              <button
+                disabled={watching || watched}
+                onClick={async () => {
+                  if (!firebaseUser) return;
+                  setWatching(true);
+                  try {
+                    const token = await firebaseUser.getIdToken();
+                    const assetT = detail?.exchange === "CRYPTO" ? "crypto" : (modalAssetType || "stock");
+                    await fetch("/api/watchlist", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                      body: JSON.stringify({ symbol, asset_type: assetT }),
+                    });
+                    setWatched(true);
+                  } catch {}
+                  setWatching(false);
+                }}
+                className={`px-3 py-1 text-xs font-mono uppercase tracking-wider border transition-all ${
+                  watched
+                    ? "border-cyber-green/30 text-cyber-green/50 cursor-default"
+                    : "border-cyber-green/40 text-cyber-green hover:bg-cyber-green/10"
+                }`}
+              >
+                {watched ? "✓ Watching" : watching ? "..." : "+ Watch"}
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="text-cyber-muted hover:text-cyber-red text-lg font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-cyber-red/10 transition-all"
+            >
+              X
+            </button>
+          </div>
         </div>
 
         {loading ? (

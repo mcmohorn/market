@@ -5,6 +5,7 @@ import { analyzeStock, getSignal, getSignalStrength, countSignalChanges, lastSig
 import { runSimulation, compareStrategies, analyzeMarketConditions } from "./simulation";
 import { scrapeAndCacheNews, getNews, getNewsSummary } from "./news";
 import { generateDailyPredictions, evaluatePastPredictions, getRecap, getAlgorithmVersions, getCurrentAlgorithmVersion, createAlgorithmVersion } from "./predictions";
+import { requireAuth, requirePro, optionalAuth, upsertUser, verifyFirebaseToken } from "./auth";
 
 const defaultStrategy = {
   macdFastPeriod: 12,
@@ -668,6 +669,189 @@ router.get("/api/paper-money/signals", async (req, res) => {
       [symbols]
     );
     res.json(result.rows);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+router.post("/auth/login", async (req, res) => {
+  try {
+    const auth = req.headers.authorization;
+    if (!auth?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+    const decoded = await verifyFirebaseToken(auth.slice(7));
+    const user = await upsertUser(decoded);
+    res.json(user);
+  } catch (err: any) {
+    res.status(401).json({ error: err.message });
+  }
+});
+
+router.get("/auth/me", requireAuth, async (req, res) => {
+  res.json((req as any).user);
+});
+
+router.patch("/auth/me", requireAuth, async (req, res) => {
+  const user = (req as any).user;
+  const { notification_email_enabled } = req.body;
+  try {
+    const result = await pool.query(
+      `UPDATE users SET notification_email_enabled = $1 WHERE id = $2 RETURNING *`,
+      [notification_email_enabled, user.id]
+    );
+    res.json(result.rows[0]);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Watchlist ─────────────────────────────────────────────────────────────────
+router.get("/watchlist", requireAuth, async (req, res) => {
+  const user = (req as any).user;
+  try {
+    const result = await pool.query(
+      `SELECT w.*, cs.signal as current_signal, cs.price as current_price, cs.change_percent
+       FROM watchlist w
+       LEFT JOIN computed_signals cs ON cs.symbol = w.symbol AND cs.asset_type = w.asset_type
+       WHERE w.user_id = $1
+       ORDER BY w.added_at DESC`,
+      [user.id]
+    );
+    res.json(result.rows);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/watchlist", requireAuth, async (req, res) => {
+  const user = (req as any).user;
+  const { symbol, asset_type } = req.body;
+  if (!symbol) return res.status(400).json({ error: "symbol required" });
+  try {
+    const sigResult = await pool.query(
+      `SELECT signal FROM computed_signals WHERE symbol = $1 AND asset_type = $2 LIMIT 1`,
+      [symbol.toUpperCase(), asset_type || "stock"]
+    );
+    const currentSignal = sigResult.rows[0]?.signal || "";
+    const result = await pool.query(
+      `INSERT INTO watchlist (user_id, symbol, asset_type, last_known_signal)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (user_id, symbol, asset_type) DO NOTHING
+       RETURNING *`,
+      [user.id, symbol.toUpperCase(), asset_type || "stock", currentSignal]
+    );
+    res.json(result.rows[0] || { message: "already exists" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/watchlist/:symbol", requireAuth, async (req, res) => {
+  const user = (req as any).user;
+  const { symbol } = req.params;
+  const asset_type = (req.query.asset_type as string) || "stock";
+  try {
+    await pool.query(
+      `DELETE FROM watchlist WHERE user_id = $1 AND symbol = $2 AND asset_type = $3`,
+      [user.id, symbol.toUpperCase(), asset_type]
+    );
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Saved Simulations ─────────────────────────────────────────────────────────
+router.get("/simulations", requireAuth, async (req, res) => {
+  const user = (req as any).user;
+  try {
+    const result = await pool.query(
+      `SELECT * FROM saved_simulations WHERE user_id = $1 ORDER BY created_at DESC`,
+      [user.id]
+    );
+    res.json(result.rows);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/simulations", requirePro, async (req, res) => {
+  const user = (req as any).user;
+  const { name, asset_type, params, result_summary, start_date, end_date } = req.body;
+  try {
+    const result = await pool.query(
+      `INSERT INTO saved_simulations (user_id, name, asset_type, params, result_summary, start_date, end_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [user.id, name || "", asset_type || "stock", JSON.stringify(params), JSON.stringify(result_summary || {}), start_date, end_date]
+    );
+    res.json(result.rows[0]);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/simulations/:id", requireAuth, async (req, res) => {
+  const user = (req as any).user;
+  try {
+    await pool.query(
+      `DELETE FROM saved_simulations WHERE id = $1 AND user_id = $2`,
+      [req.params.id, user.id]
+    );
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+router.get("/notifications", requireAuth, async (req, res) => {
+  const user = (req as any).user;
+  try {
+    const result = await pool.query(
+      `SELECT * FROM notifications WHERE user_id = $1 ORDER BY read ASC, created_at DESC LIMIT 100`,
+      [user.id]
+    );
+    res.json(result.rows);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/notifications/read", requireAuth, async (req, res) => {
+  const user = (req as any).user;
+  try {
+    await pool.query(`UPDATE notifications SET read = true WHERE user_id = $1`, [user.id]);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Static Snapshot ───────────────────────────────────────────────────────────
+router.get("/snapshot", async (req, res) => {
+  try {
+    const stocksResult = await pool.query(
+      `SELECT symbol, name, exchange, sector, price, change_percent, signal, signal_strength, rsi, macd_histogram, volume
+       FROM computed_signals WHERE asset_type = 'stock' ORDER BY ABS(change_percent) DESC LIMIT 5`
+    );
+    const cryptoResult = await pool.query(
+      `SELECT symbol, name, exchange, sector, price, change_percent, signal, signal_strength, rsi, macd_histogram, volume
+       FROM computed_signals WHERE asset_type = 'crypto' ORDER BY ABS(change_percent) DESC LIMIT 5`
+    );
+    const statsResult = await pool.query(
+      `SELECT asset_type,
+         COUNT(*) as total,
+         COUNT(*) FILTER (WHERE signal='BUY') as buy_count,
+         COUNT(*) FILTER (WHERE signal='SELL') as sell_count,
+         COUNT(*) FILTER (WHERE signal='HOLD') as hold_count
+       FROM computed_signals GROUP BY asset_type`
+    );
+    res.json({
+      stocks: stocksResult.rows,
+      crypto: cryptoResult.rows,
+      stats: statsResult.rows,
+      generated_at: new Date().toISOString(),
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
