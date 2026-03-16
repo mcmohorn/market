@@ -10,6 +10,12 @@ module "shared" {
   project_id = var.google_cloud_project_id
 }
 
+module "state" {
+  source     = "./state"
+  project_id = var.google_cloud_project_id
+  project_name = var.google_cloud_project_name
+}
+
 module "backend" {
   source     = "./backend"
   env        = "production"
@@ -26,4 +32,6 @@ module "backend" {
   db_password       = var.db_password
   github_repo_owner = var.github_repo_owner
   github_repo_name  = var.github_repo_name
+
+  github_connection_name = "gh-conn-1"
 }

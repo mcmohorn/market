@@ -47,3 +47,9 @@ variable "github_repo_name" {
   type        = string
   description = "GitHub repository name"
 }
+
+
+variable "github_connection_name" {
+  type        = string
+  description = "Name of the existing Cloud Build v2 GitHub connection"
+}
