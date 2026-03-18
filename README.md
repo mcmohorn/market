@@ -68,6 +68,7 @@ export ALPACA_API_KEY_SECRET="your-alpaca-secret"
 export TIINGO_API_TOKEN="your-tiingo-token"
 ```
 
+
 ### 3. Initialize the database
 
 The database schema is created automatically on server startup. To seed market data:
