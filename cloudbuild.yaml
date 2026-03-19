@@ -6,16 +6,6 @@ steps:
       - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE_NAME}:$COMMIT_SHA'
       - '-t'
       - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE_NAME}:latest'
-      - '--build-arg'
-      - 'VITE_FIREBASE_API_KEY=${_VITE_FIREBASE_API_KEY}'
-      - '--build-arg'
-      - 'VITE_FIREBASE_APP_ID=${_VITE_FIREBASE_APP_ID}'
-      - '--build-arg'
-      - 'VITE_FIREBASE_AUTH_DOMAIN=${_VITE_FIREBASE_AUTH_DOMAIN}'
-      - '--build-arg'
-      - 'VITE_FIREBASE_MESSAGING_SENDER_ID=${_VITE_FIREBASE_MESSAGING_SENDER_ID}'
-      - '--build-arg'
-      - 'VITE_FIREBASE_PROJECT_ID=${_VITE_FIREBASE_PROJECT_ID}'
       - '.'
 
   - name: 'gcr.io/cloud-builders/docker'
@@ -52,7 +42,7 @@ steps:
       - '--add-cloudsql-instances'
       - '${_CLOUDSQL_CONNECTION}'
       - '--set-env-vars'
-      - 'NODE_ENV=production,DATABASE_URL=postgresql://mateo:${_DB_PASSWORD}@/mateo?host=/cloudsql/${_CLOUDSQL_CONNECTION}'
+      - 'DATABASE_URL=postgresql://mateo:${_DB_PASSWORD}@/mateo?host=/cloudsql/${_CLOUDSQL_CONNECTION}'
       - '--set-secrets'
       - 'GOOGLE_CREDENTIALS_JSON=google-credentials-json:latest'
 
@@ -63,15 +53,10 @@ substitutions:
   _CLOUDSQL_CONNECTION: ''
   _CLOUDRUN_SA: ''
   _DB_PASSWORD: ''
-  _VITE_FIREBASE_API_KEY: ''
-  _VITE_FIREBASE_APP_ID: ''
-  _VITE_FIREBASE_AUTH_DOMAIN: ''
-  _VITE_FIREBASE_MESSAGING_SENDER_ID: ''
-  _VITE_FIREBASE_PROJECT_ID: ''
 
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE_NAME}:$COMMIT_SHA'
-  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}:latest'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE_NAME}:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY

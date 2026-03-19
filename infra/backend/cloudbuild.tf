@@ -22,13 +22,6 @@ resource "google_cloudbuild_trigger" "deploy_main" {
     _CLOUDSQL_CONNECTION = var.cloudsql_connection_name
     _CLOUDRUN_SA         = google_service_account.cloudrun_sa.email
     _DB_PASSWORD         = var.db_password
-
-    # Firebase client config — baked into the Docker image at build time
-    _VITE_FIREBASE_API_KEY              = var.vite_firebase_api_key
-    _VITE_FIREBASE_APP_ID               = var.vite_firebase_app_id
-    _VITE_FIREBASE_AUTH_DOMAIN          = var.vite_firebase_auth_domain
-    _VITE_FIREBASE_MESSAGING_SENDER_ID  = var.vite_firebase_messaging_sender_id
-    _VITE_FIREBASE_PROJECT_ID           = var.vite_firebase_project_id
   }
 }
 

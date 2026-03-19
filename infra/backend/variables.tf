@@ -44,25 +44,3 @@ variable "github_connection_name" {
   type        = string
   description = "Name of the existing Cloud Build v2 GitHub connection"
 }
-
-variable "vite_firebase_api_key" {
-  type      = string
-  sensitive = true
-}
-
-variable "vite_firebase_app_id" {
-  type      = string
-  sensitive = true
-}
-
-variable "vite_firebase_auth_domain" {
-  type = string
-}
-
-variable "vite_firebase_messaging_sender_id" {
-  type = string
-}
-
-variable "vite_firebase_project_id" {
-  type = string
-}
