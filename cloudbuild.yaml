@@ -43,8 +43,6 @@ steps:
       - '${_CLOUDSQL_CONNECTION}'
       - '--set-env-vars'
       - 'DATABASE_URL=postgresql://mateo:${_DB_PASSWORD}@/mateo?host=/cloudsql/${_CLOUDSQL_CONNECTION}'
-      - '--set-secrets'
-      - 'GOOGLE_CREDENTIALS_JSON=google-credentials-json:latest'
 
 substitutions:
   _REGION: us-central1

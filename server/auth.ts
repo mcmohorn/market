@@ -10,12 +10,20 @@ let adminApp: admin.app.App | null = null;
 
 function getAdminApp(): admin.app.App {
   if (adminApp) return adminApp;
-  if (!process.env.GOOGLE_CREDENTIALS_JSON) throw new Error("GOOGLE_CREDENTIALS_JSON not set");
-  const creds = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
-  adminApp = admin.initializeApp({
-    credential: admin.credential.cert(creds),
-    projectId: creds.project_id,
-  });
+  if (process.env.GOOGLE_CREDENTIALS_JSON) {
+    // Local dev: explicit service account JSON
+    const creds = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+    adminApp = admin.initializeApp({
+      credential: admin.credential.cert(creds),
+      projectId: creds.project_id,
+    });
+  } else {
+    // Cloud Run: use the built-in service account via Application Default Credentials
+    adminApp = admin.initializeApp({
+      credential: admin.credential.applicationDefault(),
+      projectId: process.env.GOOGLE_CLOUD_PROJECT,
+    });
+  }
   return adminApp;
 }
 
