@@ -1,7 +1,7 @@
 
 resource "google_service_account" "cloudbuild_service_account" {
-  account_id   = "builder"
-  display_name = "builder"
+  account_id   = "builder1"
+  display_name = "builder1"
   description  = "Cloud builder service account"
 
 }
@@ -39,7 +39,7 @@ resource "google_project_iam_member" "cloudbuild_role_builder" {
 
 
 resource "google_project_iam_custom_role" "cloud_sql_instance_get_role" {
-  role_id     = "CloudSqlInstanceGetter"
+  role_id     = "CloudSqlInstanceGetter1"
   title       = "Cloud SQL Instance Getter"
   description = "Provides permission to get Cloud SQL instance details"
   permissions = [
@@ -51,7 +51,7 @@ resource "google_project_iam_custom_role" "cloud_sql_instance_get_role" {
 
 
 resource "google_project_iam_custom_role" "cloudrun_role_for_cloudbuilder" {
-  role_id     = "CloudRunForCloudBuild"
+  role_id     = "CloudRunForCloudBuild1"
   title       = "Cloud Run Things for Cloudbuiilder"
   description = "Provides necessary permissions for Cloudbuilder SA to do CloudRun things"
   permissions = [

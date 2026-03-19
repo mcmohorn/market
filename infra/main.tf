@@ -9,6 +9,12 @@ module "shared" {
   project_id = var.google_cloud_project_id
 }
 
+module "state" {
+  source       = "./state"
+  project_id   = var.google_cloud_project_id
+  project_name = var.google_cloud_project_name
+}
+
 module "backend" {
   source     = "./backend"
   env        = "production"
