@@ -30,4 +30,8 @@ module "backend" {
   github_repo_owner      = var.github_repo_owner
   github_repo_name       = var.github_repo_name
   github_connection_name = var.github_connection_name
+
+  alpaca_api_key_id     = var.alpaca_api_key_id
+  alpaca_api_key_secret = var.alpaca_api_key_secret
+  tiingo_api_token      = var.tiingo_api_token
 }

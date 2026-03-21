@@ -57,7 +57,10 @@ resource "google_project_iam_custom_role" "cloudrun_role_for_cloudbuilder" {
   permissions = [
     "run.services.get",
     "run.services.create",
-    "run.services.update"
+    "run.services.update",
+    "run.jobs.get",
+    "run.jobs.create",
+    "run.jobs.update"
   ]
   project = var.project_id
 }

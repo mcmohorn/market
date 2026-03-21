@@ -11,6 +11,7 @@
     "seed-db": "tsx server/seed.ts",
     "update-db": "tsx server/update.ts",
     "build": "vite build && npx esbuild server/index.ts --bundle --platform=node --outdir=dist/server --format=esm --packages=external --banner:js=\"import{createRequire}from'module';const require=createRequire(import.meta.url);\"",
+    "build:updater": "npx esbuild server/update.ts --bundle --platform=node --outdir=dist/server --format=esm --packages=external --banner:js=\"import{createRequire}from'module';const require=createRequire(import.meta.url);\"",
     "start": "NODE_ENV=production node dist/server/index.js"
   },
   "dependencies": {

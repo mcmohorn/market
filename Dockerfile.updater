@@ -1,0 +1,18 @@
+FROM node:20-slim AS builder
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build:updater
+
+FROM node:20-slim
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY --from=builder /app/dist/server/update.js ./dist/server/update.js
+
+ENV NODE_ENV=production
+
+CMD ["node", "dist/server/update.js"]

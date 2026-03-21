@@ -1,5 +1,7 @@
 steps:
+  # --- Web service image ---
   - name: 'gcr.io/cloud-builders/docker'
+    id: build-web
     args:
       - 'build'
       - '-t'
@@ -9,12 +11,38 @@ steps:
       - '.'
 
   - name: 'gcr.io/cloud-builders/docker'
+    id: push-web
+    waitFor: ['build-web']
     args:
       - 'push'
       - '--all-tags'
       - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE_NAME}'
 
+  # --- Updater job image ---
+  - name: 'gcr.io/cloud-builders/docker'
+    id: build-updater
+    args:
+      - 'build'
+      - '-f'
+      - 'Dockerfile.updater'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_UPDATER_NAME}:$COMMIT_SHA'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_UPDATER_NAME}:latest'
+      - '.'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: push-updater
+    waitFor: ['build-updater']
+    args:
+      - 'push'
+      - '--all-tags'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_UPDATER_NAME}'
+
+  # --- Deploy web service ---
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: deploy-web
+    waitFor: ['push-web']
     entrypoint: 'gcloud'
     args:
       - 'run'
@@ -44,9 +72,25 @@ steps:
       - '--set-env-vars'
       - 'DATABASE_URL=postgresql://mateo:${_DB_PASSWORD}@/mateo?host=/cloudsql/${_CLOUDSQL_CONNECTION}'
 
+  # --- Update updater job image ---
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: deploy-updater
+    waitFor: ['push-updater']
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'jobs'
+      - 'update'
+      - '${_UPDATER_NAME}'
+      - '--image'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_UPDATER_NAME}:$COMMIT_SHA'
+      - '--region'
+      - '${_REGION}'
+
 substitutions:
   _REGION: us-central1
   _SERVICE_NAME: mateo
+  _UPDATER_NAME: mateo-updater
   _REPOSITORY: mateo
   _CLOUDSQL_CONNECTION: ''
   _CLOUDRUN_SA: ''
@@ -55,6 +99,8 @@ substitutions:
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE_NAME}:$COMMIT_SHA'
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE_NAME}:latest'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_UPDATER_NAME}:$COMMIT_SHA'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_UPDATER_NAME}:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY

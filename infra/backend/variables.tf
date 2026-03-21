@@ -44,3 +44,20 @@ variable "github_connection_name" {
   type        = string
   description = "Name of the existing Cloud Build v2 GitHub connection"
 }
+
+variable "alpaca_api_key_id" {
+  type        = string
+  description = "Alpaca API key ID for the updater job"
+}
+
+variable "alpaca_api_key_secret" {
+  type        = string
+  sensitive   = true
+  description = "Alpaca API key secret for the updater job"
+}
+
+variable "tiingo_api_token" {
+  type        = string
+  sensitive   = true
+  description = "Tiingo API token for the updater job"
+}
