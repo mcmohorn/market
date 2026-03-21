@@ -98,6 +98,11 @@ function formatDate(d: any): string {
   return String(d).split("T")[0];
 }
 
+// When no explicit symbols are given, cap how many we load to avoid OOM.
+// We pick the symbols with the most data points in the requested range so
+// the simulation always has good coverage.
+const MAX_SYMBOLS_DEFAULT = 200;
+
 async function loadPriceData(
   symbols: string[] | undefined,
   startDate: string,
@@ -126,17 +131,27 @@ async function loadPriceData(
       params.push(symbols);
     }
   } else {
+    // No explicit symbols: sample the best-covered ones to stay within memory limits
     if (exchange) {
       sql = `SELECT ph.symbol, ph.date, ph.open, ph.high, ph.low, ph.close, ph.volume
              FROM price_history ph
              JOIN stocks s ON s.symbol = ph.symbol AND s.asset_type = ph.asset_type
-             WHERE ph.date >= $1 AND ph.date <= $2 AND ph.asset_type = $3 AND s.exchange = $4
+             WHERE ph.symbol IN (
+               SELECT ph2.symbol FROM price_history ph2
+               JOIN stocks s2 ON s2.symbol = ph2.symbol AND s2.asset_type = ph2.asset_type
+               WHERE ph2.date >= $1 AND ph2.date <= $2 AND ph2.asset_type = $3 AND s2.exchange = $4
+               GROUP BY ph2.symbol ORDER BY COUNT(*) DESC LIMIT ${MAX_SYMBOLS_DEFAULT}
+             ) AND ph.date >= $1 AND ph.date <= $2 AND ph.asset_type = $3 AND s.exchange = $4
              ORDER BY ph.symbol, ph.date ASC`;
       params.push(exchange);
     } else {
       sql = `SELECT symbol, date, open, high, low, close, volume
              FROM price_history
-             WHERE date >= $1 AND date <= $2 AND asset_type = $3
+             WHERE symbol IN (
+               SELECT symbol FROM price_history
+               WHERE date >= $1 AND date <= $2 AND asset_type = $3
+               GROUP BY symbol ORDER BY COUNT(*) DESC LIMIT ${MAX_SYMBOLS_DEFAULT}
+             ) AND date >= $1 AND date <= $2 AND asset_type = $3
              ORDER BY symbol, date ASC`;
     }
   }
@@ -162,28 +177,18 @@ async function loadPriceData(
     .map(([symbol, bars]) => ({ symbol, bars, indicators: [] }));
 }
 
-export async function runSimulation(
+// Core simulation engine — works on pre-loaded, pre-indicator data so
+// compareStrategies / analyzeMarketConditions can load data once and iterate
+// over many start dates without re-hitting the database.
+function _simulateOnData(
+  allData: SymbolData[],
   startDate: string,
   endDate: string,
   initialCapital: number,
-  params: StrategyParams,
-  symbols?: string[],
-  assetType?: string,
-  exchange?: string
-): Promise<SimulationResult> {
-  const warmupDays = Math.max(params.macdSlowPeriod, params.rsiPeriod, 30) * 3;
-  const warmupDate = new Date(startDate);
-  warmupDate.setDate(warmupDate.getDate() - warmupDays);
-  const warmupStartDate = warmupDate.toISOString().split("T")[0];
-
-  const allData = await loadPriceData(symbols, warmupStartDate, endDate, assetType, exchange);
-
+  params: StrategyParams
+): SimulationResult {
   if (allData.length === 0) {
     throw new Error("No price data found for the given date range and symbols");
-  }
-
-  for (const sd of allData) {
-    sd.indicators = computeIndicators(sd.bars, params);
   }
 
   const allDates = new Set<string>();
@@ -508,6 +513,27 @@ function downsample(timeline: PortfolioSnapshot[], maxPoints: number): Portfolio
   return result;
 }
 
+export async function runSimulation(
+  startDate: string,
+  endDate: string,
+  initialCapital: number,
+  params: StrategyParams,
+  symbols?: string[],
+  assetType?: string,
+  exchange?: string
+): Promise<SimulationResult> {
+  const warmupDays = Math.max(params.macdSlowPeriod, params.rsiPeriod, 30) * 3;
+  const warmupDate = new Date(startDate);
+  warmupDate.setDate(warmupDate.getDate() - warmupDays);
+  const warmupStartDate = warmupDate.toISOString().split("T")[0];
+
+  const allData = await loadPriceData(symbols, warmupStartDate, endDate, assetType, exchange);
+  for (const sd of allData) {
+    sd.indicators = computeIndicators(sd.bars, params);
+  }
+  return _simulateOnData(allData, startDate, endDate, initialCapital, params);
+}
+
 export async function compareStrategies(
   strategies: { name: string; params: StrategyParams }[],
   periods: number[],
@@ -518,7 +544,6 @@ export async function compareStrategies(
   exchange?: string
 ): Promise<StrategyComparison> {
   const results: StrategyComparison = { strategies: [] };
-
   const endDate = new Date().toISOString().split("T")[0];
 
   for (const strat of strategies) {
@@ -527,7 +552,16 @@ export async function compareStrategies(
     for (const years of periods) {
       const periodStart = new Date();
       periodStart.setFullYear(periodStart.getFullYear() - years);
-      const allData = await loadPriceData(symbols, periodStart.toISOString().split("T")[0], endDate, assetType, exchange);
+      const periodStartStr = periodStart.toISOString().split("T")[0];
+
+      // Extend back far enough for indicator warmup
+      const warmupDays = Math.max(strat.params.macdSlowPeriod, strat.params.rsiPeriod, 30) * 3;
+      const warmupDate = new Date(periodStart);
+      warmupDate.setDate(warmupDate.getDate() - warmupDays);
+      const warmupStartStr = warmupDate.toISOString().split("T")[0];
+
+      // Load data ONCE — serves every iteration for this (strategy, period) pair
+      const allData = await loadPriceData(symbols, warmupStartStr, endDate, assetType, exchange);
 
       if (allData.length === 0 || allData[0].bars.length < 30) {
         periodResults.push({
@@ -538,9 +572,17 @@ export async function compareStrategies(
         continue;
       }
 
+      // Compute indicators once for this strategy's params
+      for (const sd of allData) {
+        sd.indicators = computeIndicators(sd.bars, strat.params);
+      }
+
+      // Collect trading dates within the actual period (after warmup)
       const allDates = new Set<string>();
       for (const sd of allData) {
-        for (const bar of sd.bars) allDates.add(bar.date);
+        for (const bar of sd.bars) {
+          if (bar.date >= periodStartStr) allDates.add(bar.date);
+        }
       }
       const sortedDates = Array.from(allDates).sort();
 
@@ -551,8 +593,8 @@ export async function compareStrategies(
         const startIdx = Math.floor(Math.random() * (sortedDates.length - 60));
         const simStartDate = sortedDates[startIdx];
         try {
-          const result = await runSimulation(simStartDate, endDate, initialCapital, strat.params, symbols, assetType, exchange);
-          simResults.push(result);
+          // No DB hit — reuses pre-loaded, pre-computed data
+          simResults.push(_simulateOnData(allData, simStartDate, endDate, initialCapital, strat.params));
         } catch {
         }
       }
@@ -581,11 +623,7 @@ export async function compareStrategies(
       });
     }
 
-    results.strategies.push({
-      name: strat.name,
-      params: strat.params,
-      results: periodResults,
-    });
+    results.strategies.push({ name: strat.name, params: strat.params, results: periodResults });
   }
 
   return results;
@@ -603,11 +641,20 @@ export async function analyzeMarketConditions(
   const startDate = new Date();
   startDate.setFullYear(startDate.getFullYear() - 10);
 
-  const benchData = await loadPriceData([benchmark], startDate.toISOString().split("T")[0], endDate, assetType);
+  const startDateStr = startDate.toISOString().split("T")[0];
+
+  const benchData = await loadPriceData([benchmark], startDateStr, endDate, assetType);
 
   if (benchData.length === 0) {
     throw new Error(`No benchmark data found for ${benchmark}`);
   }
+
+  // Load all symbol data ONCE for the full 10-year window — every strategy and
+  // every market-condition period will reuse this, with indicators recomputed per strategy.
+  const warmupDays = 90;
+  const warmupDate = new Date(startDate);
+  warmupDate.setDate(warmupDate.getDate() - warmupDays);
+  const allData = await loadPriceData(symbols, warmupDate.toISOString().split("T")[0], endDate, assetType, exchange);
 
   const benchBars = benchData[0].bars;
   const sma200: number[] = [];
@@ -689,20 +736,16 @@ export async function analyzeMarketConditions(
     const stratPerf: MarketConditionResult["strategyPerformance"] = [];
 
     for (const strat of strategies) {
+      // Compute indicators for this strategy using the pre-loaded full dataset
+      for (const sd of allData) {
+        sd.indicators = computeIndicators(sd.bars, strat.params);
+      }
       const simResults: SimulationResult[] = [];
 
       for (const period of condPeriods.slice(0, 5)) {
         try {
-          const result = await runSimulation(
-            period.startDate,
-            period.endDate,
-            initialCapital,
-            strat.params,
-            symbols,
-            assetType,
-            exchange
-          );
-          simResults.push(result);
+          // No DB hit — reuse the 10-year dataset with freshly computed indicators
+          simResults.push(_simulateOnData(allData, period.startDate, period.endDate, initialCapital, strat.params));
         } catch {
         }
       }
