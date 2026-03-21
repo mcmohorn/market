@@ -675,7 +675,7 @@ router.get("/api/paper-money/signals", async (req, res) => {
 });
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
-router.post("/auth/login", async (req, res) => {
+router.post("/api/auth/login", async (req, res) => {
   try {
     const auth = req.headers.authorization;
     if (!auth?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
@@ -687,11 +687,11 @@ router.post("/auth/login", async (req, res) => {
   }
 });
 
-router.get("/auth/me", requireAuth, async (req, res) => {
+router.get("/api/auth/me", requireAuth, async (req, res) => {
   res.json((req as any).user);
 });
 
-router.patch("/auth/me", requireAuth, async (req, res) => {
+router.patch("/api/auth/me", requireAuth, async (req, res) => {
   const user = (req as any).user;
   const { notification_email_enabled } = req.body;
   try {
@@ -706,7 +706,7 @@ router.patch("/auth/me", requireAuth, async (req, res) => {
 });
 
 // ── Watchlist ─────────────────────────────────────────────────────────────────
-router.get("/watchlist", requireAuth, async (req, res) => {
+router.get("/api/watchlist", requireAuth, async (req, res) => {
   const user = (req as any).user;
   try {
     const result = await pool.query(
@@ -723,7 +723,7 @@ router.get("/watchlist", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/watchlist", requireAuth, async (req, res) => {
+router.post("/api/watchlist", requireAuth, async (req, res) => {
   const user = (req as any).user;
   const { symbol, asset_type } = req.body;
   if (!symbol) return res.status(400).json({ error: "symbol required" });
@@ -746,7 +746,7 @@ router.post("/watchlist", requireAuth, async (req, res) => {
   }
 });
 
-router.delete("/watchlist/:symbol", requireAuth, async (req, res) => {
+router.delete("/api/watchlist/:symbol", requireAuth, async (req, res) => {
   const user = (req as any).user;
   const { symbol } = req.params;
   const asset_type = (req.query.asset_type as string) || "stock";
@@ -762,7 +762,7 @@ router.delete("/watchlist/:symbol", requireAuth, async (req, res) => {
 });
 
 // ── Saved Simulations ─────────────────────────────────────────────────────────
-router.get("/simulations", requireAuth, async (req, res) => {
+router.get("/api/simulations", requireAuth, async (req, res) => {
   const user = (req as any).user;
   try {
     const result = await pool.query(
@@ -775,7 +775,7 @@ router.get("/simulations", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/simulations", requirePro, async (req, res) => {
+router.post("/api/simulations", requirePro, async (req, res) => {
   const user = (req as any).user;
   const { name, asset_type, params, result_summary, start_date, end_date } = req.body;
   try {
@@ -790,7 +790,7 @@ router.post("/simulations", requirePro, async (req, res) => {
   }
 });
 
-router.delete("/simulations/:id", requireAuth, async (req, res) => {
+router.delete("/api/simulations/:id", requireAuth, async (req, res) => {
   const user = (req as any).user;
   try {
     await pool.query(
@@ -804,7 +804,7 @@ router.delete("/simulations/:id", requireAuth, async (req, res) => {
 });
 
 // ── Notifications ─────────────────────────────────────────────────────────────
-router.get("/notifications", requireAuth, async (req, res) => {
+router.get("/api/notifications", requireAuth, async (req, res) => {
   const user = (req as any).user;
   try {
     const result = await pool.query(
@@ -817,7 +817,7 @@ router.get("/notifications", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/notifications/read", requireAuth, async (req, res) => {
+router.post("/api/notifications/read", requireAuth, async (req, res) => {
   const user = (req as any).user;
   try {
     await pool.query(`UPDATE notifications SET read = true WHERE user_id = $1`, [user.id]);
@@ -828,7 +828,7 @@ router.post("/notifications/read", requireAuth, async (req, res) => {
 });
 
 // ── Static Snapshot ───────────────────────────────────────────────────────────
-router.get("/snapshot", async (req, res) => {
+router.get("/api/snapshot", async (req, res) => {
   try {
     const stocksResult = await pool.query(
       `SELECT symbol, name, exchange, sector, price, change_percent, signal, signal_strength, rsi, macd_histogram, volume
