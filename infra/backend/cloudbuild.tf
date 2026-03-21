@@ -25,16 +25,16 @@ resource "google_cloudbuild_trigger" "deploy_main" {
   }
 }
 
-data "google_cloudbuildv2_connection" "github" {
-  project  = var.project_id
-  location = "us-central1"
-  name     = var.github_connection_name
-}
+# data "google_cloudbuildv2_connection" "github" {
+#   project  = var.project_id
+#   location = "us-central1"
+#   name     = var.github_connection_name
+# }
 
 resource "google_cloudbuildv2_repository" "app" {
   project           = var.project_id
   location          = "us-central1"
   name              = var.github_repo_name
-  parent_connection = data.google_cloudbuildv2_connection.github.id
+  parent_connection = var.github_connection_name
   remote_uri        = "https://github.com/${var.github_repo_owner}/${var.github_repo_name}.git"
 }

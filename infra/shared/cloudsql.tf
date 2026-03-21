@@ -15,6 +15,11 @@ resource "google_sql_database_instance" "main" {
 
     ip_configuration {
       ipv4_enabled = true
+      authorized_networks {
+                  name            = "heber1" 
+                  value           = "65.130.186.137" 
+                    # (1 unchanged attribute hidden)
+                }
     }
   }
 
