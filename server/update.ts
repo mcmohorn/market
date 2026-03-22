@@ -257,6 +257,31 @@ async function recomputeSignals(updates: { symbol: string; assetType: string }[]
   }
 }
 
+async function backfillMissingSignals() {
+  const { rows } = await pool.query<{ symbol: string; asset_type: string }>(`
+    SELECT ph.symbol, ph.asset_type
+    FROM (
+      SELECT symbol, asset_type, COUNT(*) AS cnt
+      FROM price_history
+      GROUP BY symbol, asset_type
+      HAVING COUNT(*) >= 30
+    ) ph
+    LEFT JOIN computed_signals cs ON cs.symbol = ph.symbol AND cs.asset_type = ph.asset_type
+    WHERE cs.symbol IS NULL
+    ORDER BY ph.symbol
+  `);
+
+  if (rows.length === 0) {
+    console.log("\nBackfill check: all symbols already have computed signals");
+    return;
+  }
+
+  console.log(`\nBackfilling signals for ${rows.length} symbols missing from computed_signals...`);
+  const updates = rows.map(r => ({ symbol: r.symbol, assetType: r.asset_type }));
+  await recomputeSignals(updates);
+  console.log(`  Backfill complete`);
+}
+
 function nextBusinessDay(dateStr: string): string {
   const d = new Date(dateStr);
   d.setDate(d.getDate() + 1);
@@ -351,6 +376,7 @@ async function main() {
     console.log("\nNo new data - signals are current");
   }
 
+  await backfillMissingSignals();
   await generateSnapshot();
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);

@@ -38,8 +38,9 @@ const RESUME_RUN_ID: number | null = resumeIdx >= 0 ? parseInt(args[resumeIdx + 
 const CFG = {
   assetType:        "stock" as const,
   lookbackYears:    5,          // how far back to load data
-  maxSymbols:       80,         // total symbol pool
-  quickEvalSymbols: 20,         // smaller subset for inner training loop (faster)
+  maxSymbols:       400,        // total symbol pool (stratified across sectors)
+  perSectorLimit:   30,         // max symbols to pick from each sector
+  quickEvalSymbols: 60,         // smaller subset for inner training loop (faster, ~4 per sector)
 
   // Window counts for quick evaluation (per genome)
   shortWindows:  25,            // 30-90 day windows  (scalp / short-term track)
@@ -577,15 +578,55 @@ async function loadData(pool: Pool): Promise<SymbolBars[]> {
   since.setFullYear(since.getFullYear() - CFG.lookbackYears);
   const sinceStr = since.toISOString().split("T")[0];
 
-  const { rows: symRows } = await pool.query<{ symbol: string; cnt: string }>(`
-    SELECT symbol, COUNT(*) AS cnt
-    FROM price_history
-    WHERE asset_type=$1 AND date>=$2
-    GROUP BY symbol HAVING COUNT(*)>=600
-    ORDER BY cnt DESC LIMIT $3
-  `, [CFG.assetType, sinceStr, CFG.maxSymbols]);
+  // Stratified sampling: pick up to perSectorLimit symbols per sector (excluding ETF/Fund),
+  // ordered by bar count descending within each sector, then interleaved across sectors.
+  // This gives sector-diverse coverage instead of just the N most data-rich symbols.
+  const { rows: symRows } = await pool.query<{ symbol: string; sector: string; cnt: string }>(`
+    WITH ranked AS (
+      SELECT
+        ph.symbol,
+        COALESCE(NULLIF(s.sector, ''), 'Unknown') AS sector,
+        COUNT(*) AS cnt,
+        ROW_NUMBER() OVER (
+          PARTITION BY COALESCE(NULLIF(s.sector, ''), 'Unknown')
+          ORDER BY COUNT(*) DESC
+        ) AS rn
+      FROM price_history ph
+      LEFT JOIN stocks s ON s.symbol = ph.symbol AND s.asset_type = ph.asset_type
+      WHERE ph.asset_type = $1 AND ph.date >= $2
+        AND COALESCE(s.sector, '') NOT IN ('ETF/Fund', 'SPAC')
+      GROUP BY ph.symbol, s.sector
+      HAVING COUNT(*) >= 600
+    )
+    SELECT symbol, sector, cnt
+    FROM ranked
+    WHERE rn <= $3
+    ORDER BY rn, sector
+    LIMIT $4
+  `, [CFG.assetType, sinceStr, CFG.perSectorLimit, CFG.maxSymbols]);
 
-  console.log(`  Found ${symRows.length} symbols with ≥600 trading days in last ${CFG.lookbackYears} years`);
+  // Count qualifying symbols (without limit) for informational purposes
+  const { rows: countRow } = await pool.query<{ total: string }>(`
+    SELECT COUNT(DISTINCT ph.symbol) AS total
+    FROM price_history ph
+    LEFT JOIN stocks s ON s.symbol = ph.symbol AND s.asset_type = ph.asset_type
+    WHERE ph.asset_type = $1 AND ph.date >= $2
+      AND COALESCE(s.sector, '') NOT IN ('ETF/Fund', 'SPAC')
+    GROUP BY ph.symbol HAVING COUNT(*) >= 600
+  `, [CFG.assetType, sinceStr]);
+  const totalQualifying = countRow.length;
+
+  // Report sector breakdown
+  const bySector: Record<string, number> = {};
+  for (const r of symRows) bySector[r.sector] = (bySector[r.sector] || 0) + 1;
+  const sectorSummary = Object.entries(bySector)
+    .sort((a, b) => b[1] - a[1])
+    .map(([sec, n]) => `${sec}:${n}`)
+    .join("  ");
+  console.log(`  Qualifying symbols with ≥600 trading days: ${totalQualifying}`);
+  console.log(`  Strategy pool: ${symRows.length} symbols (stratified, ETF/SPAC excluded)`);
+  console.log(`  Sector breakdown: ${sectorSummary}`);
+  console.log(`  Quick-eval subset: first ${CFG.quickEvalSymbols} (top ~${Math.ceil(CFG.quickEvalSymbols / Object.keys(bySector).length)} per sector)`);
 
   const symbols: SymbolBars[] = [];
   for (const row of symRows) {
@@ -600,14 +641,14 @@ async function loadData(pool: Pool): Promise<SymbolBars[]> {
     symbols.push({
       symbol: row.symbol,
       bars: bars.map(b => ({
-        date:   fmt(b.date),     // ← uses fmt() — handles both string and Date objects
+        date:   fmt(b.date),
         close:  parseFloat(b.close),
         volume: parseFloat(b.volume),
       })),
     });
   }
 
-  console.log(`  Loaded ${symbols.length} symbols`);
+  console.log(`  Loaded bars for ${symbols.length} symbols`);
   if (symbols.length > 0) {
     const allDates = symbols.flatMap(s => s.bars.map(b => b.date)).sort();
     console.log(`  Date range: ${allDates[0]} → ${allDates[allDates.length - 1]}`);
