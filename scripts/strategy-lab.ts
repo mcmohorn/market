@@ -1,3 +1,5 @@
+import "dotenv/config";
+
 /**
  * MATEO Strategy Lab — Evolutionary Strategy Optimizer
  *

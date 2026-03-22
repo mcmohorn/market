@@ -1,3 +1,5 @@
+import "dotenv/config";
+
 /**
  * Apply generated strategies to the Simulation Lab
  *
