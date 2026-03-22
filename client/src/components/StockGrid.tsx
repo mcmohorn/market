@@ -3,10 +3,8 @@ import { AgGridReact } from "ag-grid-react";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import type { ColDef } from "ag-grid-community";
-import { fetchStocks, fetchSectors } from "../lib/api";
+import { fetchStocks, fetchSectors, getAsOfDate, type TimeJump } from "../lib/api";
 import type { StockAnalysis } from "../lib/types";
-import type { TimeJump } from "../App";
-import { getAsOfDate } from "../App";
 
 interface Props {
   assetType: string;

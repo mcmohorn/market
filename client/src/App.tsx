@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Header from "./components/Header";
 import type { AssetType } from "./components/Header";
@@ -17,21 +17,16 @@ import AboutPage from "./pages/AboutPage";
 import WatchlistPage from "./pages/WatchlistPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import HistoryPage from "./pages/HistoryPage";
+import { getAsOfDate, type TimeJump } from "./lib/api";
 
-export type TimeJump = "1d" | "1w" | "1m" | "3m" | "6m" | "1y" | "latest";
-
-export function getAsOfDate(jump: TimeJump): string | undefined {
-  if (jump === "latest") return undefined;
-  const now = new Date();
-  switch (jump) {
-    case "1d": now.setDate(now.getDate() - 1); break;
-    case "1w": now.setDate(now.getDate() - 7); break;
-    case "1m": now.setMonth(now.getMonth() - 1); break;
-    case "3m": now.setMonth(now.getMonth() - 3); break;
-    case "6m": now.setMonth(now.getMonth() - 6); break;
-    case "1y": now.setFullYear(now.getFullYear() - 1); break;
-  }
-  return now.toISOString().split("T")[0];
+async function fetchUnreadCount(firebaseUser: any): Promise<number> {
+  try {
+    const token = await firebaseUser.getIdToken();
+    const res = await fetch("/api/notifications", { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return 0;
+    const data: { read: boolean }[] = await res.json();
+    return data.filter(n => !n.read).length;
+  } catch { return 0; }
 }
 
 type View = "scanner" | "simulation" | "paper" | "news" | "recaps" | "watchlist" | "notifications" | "history" | "about";
@@ -55,13 +50,21 @@ function NavTab({ label, active, onClick, badge }: { label: string; active: bool
 }
 
 function AppInner() {
-  const { user, loading, logout } = useAuth();
+  const { user, firebaseUser, loading, logout } = useAuth();
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [view, setView] = useState<View>("scanner");
   const [assetType, setAssetType] = useState<AssetType>("stock");
   const [timeJump, setTimeJump] = useState<TimeJump>("latest");
   const [showLogin, setShowLogin] = useState(false);
   const [loginPrompt, setLoginPrompt] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (!firebaseUser || user?.account_type !== "pro") { setUnreadCount(0); return; }
+    fetchUnreadCount(firebaseUser).then(setUnreadCount);
+    const id = setInterval(() => fetchUnreadCount(firebaseUser).then(setUnreadCount), 60_000);
+    return () => clearInterval(id);
+  }, [firebaseUser, user?.account_type]);
 
   const handleAssetTypeChange = useCallback((type: AssetType) => {
     setAssetType(type);
@@ -108,7 +111,7 @@ function AppInner() {
           {isPro && <NavTab label="Your History" active={view === "history"} onClick={() => setView("history")} />}
           <NavTab label="Market News" active={view === "news"} onClick={() => setView("news")} />
           <NavTab label="Recaps" active={view === "recaps"} onClick={() => setView("recaps")} />
-          {isPro && <NavTab label="Notifications" active={view === "notifications"} onClick={() => setView("notifications")} />}
+          {isPro && <NavTab label="Notifications" active={view === "notifications"} onClick={() => { setView("notifications"); setUnreadCount(0); }} badge={unreadCount} />}
           <NavTab label="About" active={view === "about"} onClick={() => setView("about")} />
           {!isLoggedIn && (
             <button

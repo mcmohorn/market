@@ -1,0 +1,105 @@
+
+============================================================
+PHASE 1 — Loading historical data from Postgres
+============================================================
+  Found 80 qualifying symbols
+  Loaded 80 symbols with sufficient history
+  Built 30 test windows  (Fri Apr 01 → Wed Sep 29)
+
+============================================================
+PHASE 2 — Random Search  (600 genomes × 30 windows)
+============================================================
+  [   1/600]  best fit=0.000  sharpe=0.00  ret=0.0%  dd=0.0%
+  [  30/600]  best fit=0.000  sharpe=0.00  ret=0.0%  dd=0.0%
+  [  60/600]  best fit=0.000  sharpe=0.00  ret=0.0%  dd=0.0%
+  [  90/600]  best fit=0.000  sharpe=0.00  ret=0.0%  dd=0.0%
+  [ 120/600]  best fit=0.000  sharpe=0.00  ret=0.0%  dd=0.0%
+  [ 150/600]  best fit=0.000  sharpe=0.00  ret=0.0%  dd=0.0%
+  [ 180/600]  best fit=0.000  sharpe=0.00  ret=0.0%  dd=0.0%
+  [ 210/600]  best fit=0.000  sharpe=0.00  ret=0.0%  dd=0.0%
+  [ 240/600]  best fit=0.000  sharpe=0.00  ret=0.0%  dd=0.0%
+  [ 270/600]  best fit=0.000  sharpe=0.00  ret=0.0%  dd=0.0%
+  [ 300/600]  best fit=0.000  sharpe=0.00  ret=0.0%  dd=0.0%
+  [ 330/600]  best fit=0.000  sharpe=0.00  ret=0.0%  dd=0.0%
+  [ 360/600]  best fit=0.000  sharpe=0.00  ret=0.0%  dd=0.0%
+  [ 390/600]  best fit=0.000  sharpe=0.00  ret=0.0%  dd=0.0%
+  [ 420/600]  best fit=0.000  sharpe=0.00  ret=0.0%  dd=0.0%
+  [ 450/600]  best fit=0.000  sharpe=0.00  ret=0.0%  dd=0.0%
+  [ 480/600]  best fit=0.000  sharpe=0.00  ret=0.0%  dd=0.0%
+  [ 510/600]  best fit=0.000  sharpe=0.00  ret=0.0%  dd=0.0%
+  [ 540/600]  best fit=0.000  sharpe=0.00  ret=0.0%  dd=0.0%
+  [ 570/600]  best fit=0.000  sharpe=0.00  ret=0.0%  dd=0.0%
+  [ 600/600]  best fit=0.000  sharpe=0.00  ret=0.0%  dd=0.0%
+
+  ✓ Top random: fitness=0.000  sharpe=0.00
+
+============================================================
+PHASE 3 — Genetic Algorithm  (pop=80, gen=120)
+============================================================
+  Gen   1/120  fit=0.000  MACD=11/23/14  RSI=16(24-67)  SL=8.0%  TP=10.0%
+  Gen  10/120  fit=0.000  MACD=11/23/14  RSI=16(24-67)  SL=8.0%  TP=10.0%
+  Gen  20/120  fit=0.000  MACD=11/23/14  RSI=16(24-67)  SL=8.0%  TP=10.0%
+  Gen  30/120  fit=0.000  MACD=11/23/14  RSI=16(24-67)  SL=8.0%  TP=10.0%
+  Gen  40/120  fit=0.000  MACD=11/23/14  RSI=16(24-67)  SL=8.0%  TP=10.0%
+  Gen  50/120  fit=0.000  MACD=11/23/14  RSI=16(24-67)  SL=8.0%  TP=10.0%
+  Gen  60/120  fit=0.000  MACD=11/23/14  RSI=16(24-67)  SL=8.0%  TP=10.0%
+  Gen  70/120  fit=0.000  MACD=11/23/14  RSI=16(24-67)  SL=8.0%  TP=10.0%
+  Gen  80/120  fit=0.000  MACD=11/23/14  RSI=16(24-67)  SL=8.0%  TP=10.0%
+  Gen  90/120  fit=0.000  MACD=11/23/14  RSI=16(24-67)  SL=8.0%  TP=10.0%
+  Gen 100/120  fit=0.000  MACD=11/23/14  RSI=16(24-67)  SL=8.0%  TP=10.0%
+  Gen 110/120  fit=0.000  MACD=11/23/14  RSI=16(24-67)  SL=8.0%  TP=10.0%
+  Gen 120/120  fit=0.000  MACD=11/23/14  RSI=16(24-67)  SL=8.0%  TP=10.0%
+
+============================================================
+PHASE 4 — Neuroevolution  (ES pop=150, gen=300, weights=97)
+============================================================
+  Gen   1/300  cur=0.000  best=0.000
+  Gen  25/300  cur=0.000  best=0.000
+  Gen  50/300  cur=0.000  best=0.000
+  Gen  75/300  cur=0.000  best=0.000
+  Gen 100/300  cur=0.000  best=0.000
+  Gen 125/300  cur=0.000  best=0.000
+  Gen 150/300  cur=0.000  best=0.000
+  Gen 175/300  cur=0.000  best=0.000
+  Gen 200/300  cur=0.000  best=0.000
+  Gen 225/300  cur=0.000  best=0.000
+  Gen 250/300  cur=0.000  best=0.000
+  Gen 275/300  cur=0.000  best=0.000
+  Gen 300/300  cur=0.000  best=0.000
+
+  ✓ Best NN fitness: 0.000
+
+============================================================
+PHASE 5 — Full Portfolio Validation  (5 candidates, 5 yr)
+============================================================
+  Loading 5-year dataset from Postgres…
+  Loaded 200 symbols
+  ✓ Momentum (MACD 11/23, RSI 16)           ret=-43.1%  sharpe=-0.11  dd=77.6%  trades=1493
+  ✓ Defensive (MACD 9/21, RSI 11)           ret=-45.7%  sharpe=-0.00  dd=66.3%  trades=1237
+  ✓ Aggressive (MACD 15/30, RSI 16)         ret=-34.2%  sharpe=0.03  dd=66.9%  trades=1286
+  ✓ Strategy-4 (MACD 11/23)                 ret=-43.1%  sharpe=-0.11  dd=77.6%  trades=1493
+  ✓ Strategy-5 (MACD 9/21)                  ret=-45.7%  sharpe=-0.00  dd=66.3%  trades=1237
+
+  Saved full results     → /Users/mcmohorn/dev/market/scripts/output/strategy-lab-results.json
+  Saved NN weights       → /Users/mcmohorn/dev/market/scripts/output/nn-weights.json
+  Saved frontend presets → /Users/mcmohorn/dev/market/scripts/output/built-in-strategies.ts
+
+======================================================================
+FINAL RESULTS SUMMARY
+======================================================================
+Strategy                                   Return  Sharpe   MaxDD  Trades
+──────────────────────────────────────────────────────────────────────
+Momentum (MACD 11/23, RSI 16)              -43.1%   -0.11   77.6%    1493
+Defensive (MACD 9/21, RSI 11)              -45.7%   -0.00   66.3%    1237
+Aggressive (MACD 15/30, RSI 16)            -34.2%    0.03   66.9%    1286
+Strategy-4 (MACD 11/23)                    -43.1%   -0.11   77.6%    1493
+Strategy-5 (MACD 9/21)                     -45.7%   -0.00   66.3%    1237
+
+======================================================================
+NEXT STEP — Wire presets into the Simulation Lab:
+======================================================================
+
+  1. Review:  /Users/mcmohorn/dev/market/scripts/output/built-in-strategies.ts
+  2. Copy to: client/src/lib/builtInStrategies.ts
+  3. Run:     npx tsx scripts/apply-strategies.ts
+     (patches SimulationPage to show a "Pro Presets" panel)

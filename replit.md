@@ -73,6 +73,12 @@ The application features pages for:
 - **Notifications**: Signal change alerts.
 - **About**: Platform information.
 
+### Firebase Client Config
+Firebase public config (apiKey, authDomain, projectId, etc.) is stored in:
+- `client/.env` — loaded by Vite in development mode (dev server)
+- `client/.env.production` — loaded by Vite for production builds (Cloud Run)
+Both files contain the same values. These are safe to commit (Firebase security is enforced via Auth rules, not the API key).
+
 ### Auth & Access Tiers
 - **Anonymous**: Limited access to scanner preview, news, recaps, and about page.
 - **Free**: Full scanner, localStorage-based paper money, news, recaps, and history.

@@ -346,7 +346,7 @@ async function main() {
 
   if (allUpdated.length > 0) {
     await recomputeSignals(allUpdated);
-    await checkWatchlistSignals(allUpdated);
+    await checkWatchlistSignals(allUpdated.map(x => x.symbol));
   } else {
     console.log("\nNo new data - signals are current");
   }
