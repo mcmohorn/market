@@ -11,7 +11,7 @@ import type {
   DEFAULT_STRATEGY,
 } from "../shared/types";
 
-function computeIndicators(bars: StockBar[], params: StrategyParams): IndicatorData[] {
+export function computeIndicators(bars: StockBar[], params: StrategyParams): IndicatorData[] {
   const m1 = params.macdFastPeriod;
   const m2 = params.macdSlowPeriod;
   const m3 = params.macdSignalPeriod;
@@ -103,7 +103,7 @@ function formatDate(d: any): string {
 // the simulation always has good coverage.
 const MAX_SYMBOLS_DEFAULT = 200;
 
-async function loadPriceData(
+export async function loadPriceData(
   symbols: string[] | undefined,
   startDate: string,
   endDate: string,
@@ -180,7 +180,7 @@ async function loadPriceData(
 // Core simulation engine — works on pre-loaded, pre-indicator data so
 // compareStrategies / analyzeMarketConditions can load data once and iterate
 // over many start dates without re-hitting the database.
-function _simulateOnData(
+export function _simulateOnData(
   allData: SymbolData[],
   startDate: string,
   endDate: string,

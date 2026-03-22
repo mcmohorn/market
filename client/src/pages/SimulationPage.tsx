@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import type { SimulationResult, StrategyParams, StrategyComparison, MarketConditionResult } from "../../../shared/types";
 import { runSimulation, compareStrategies, analyzeMarketConditions } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
+import { BUILT_IN_STRATEGIES } from "../lib/builtInStrategies";
 import EquityCurve from "../components/EquityCurve";
 import TradeLog from "../components/TradeLog";
 import SimulationSummary from "../components/SimulationSummary";
@@ -86,6 +87,7 @@ export default function SimulationPage({ assetType, onSelectSymbol, isPro }: Sim
   const [showPresets, setShowPresets] = useState(false);
   const [presetName, setPresetName] = useState("");
   const [showSaveInput, setShowSaveInput] = useState(false);
+  const [showMLPresets, setShowMLPresets] = useState(false);
 
   const handleSavePreset = () => {
     const name = presetName.trim();
@@ -554,6 +556,52 @@ export default function SimulationPage({ assetType, onSelectSymbol, isPro }: Sim
                       </button>
                     </div>
                   ))
+                )}
+              </div>
+            )}
+
+            {/* ML-Evolved Pro Presets */}
+            {BUILT_IN_STRATEGIES.length > 0 && (
+              <div className="pt-1 border-t border-cyber-grid/30">
+                <button
+                  onClick={() => setShowMLPresets(!showMLPresets)}
+                  className="w-full py-1.5 text-[11px] font-mono uppercase tracking-wider border border-yellow-500/40 text-yellow-400/80 hover:border-yellow-400 hover:text-yellow-400 transition-all flex items-center justify-center gap-2"
+                >
+                  <span>⚡</span>
+                  <span>ML Presets ({BUILT_IN_STRATEGIES.length})</span>
+                  <span className="text-[9px] bg-yellow-500/20 px-1 rounded">PRO</span>
+                </button>
+
+                {showMLPresets && (
+                  <div className="border border-yellow-500/30 p-2 space-y-1 max-h-[280px] overflow-y-auto mt-1">
+                    <p className="text-[10px] font-mono text-yellow-400/60 px-1 pb-1">
+                      ML-evolved via genetic algorithm + neuroevolution
+                    </p>
+                    {BUILT_IN_STRATEGIES.map((p, i) => (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          setStartDate(p.startDate);
+                          setEndDate(p.endDate);
+                          setCapital(p.initialCapital);
+                          setParams({ ...DEFAULT_PARAMS, ...p.params });
+                          setSelectedSymbols(p.symbols || []);
+                          setExchange(p.exchange || "ALL");
+                          setShowMLPresets(false);
+                        }}
+                        className="w-full text-left px-2 py-2 border border-yellow-500/20 hover:border-yellow-400/60 hover:bg-yellow-500/5 transition-all group"
+                      >
+                        <div className="text-yellow-300 text-xs font-mono group-hover:text-yellow-200 transition-colors truncate">
+                          {p.name}
+                        </div>
+                        <div className="text-yellow-500/60 text-[10px] font-mono mt-0.5">
+                          MACD {p.params.macdFastPeriod}/{p.params.macdSlowPeriod}/{p.params.macdSignalPeriod}
+                          {" · "}RSI {p.params.rsiPeriod} ({p.params.rsiOversold.toFixed(0)}–{p.params.rsiOverbought.toFixed(0)})
+                          {" · "}SL {p.params.stopLossPct.toFixed(1)}% / TP {p.params.takeProfitPct.toFixed(1)}%
+                        </div>
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
             )}
