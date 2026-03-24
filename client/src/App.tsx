@@ -18,6 +18,7 @@ import WatchlistPage from "./pages/WatchlistPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import HistoryPage from "./pages/HistoryPage";
 import { getAsOfDate, type TimeJump } from "./lib/api";
+import MateoSplash from "./components/MateoSplash";
 
 async function fetchUnreadCount(firebaseUser: any): Promise<number> {
   try {
@@ -85,11 +86,7 @@ function AppInner() {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-cyber-bg flex items-center justify-center">
-        <div className="text-cyber-green font-mono text-sm animate-pulse">INITIALIZING MATEO...</div>
-      </div>
-    );
+    return <MateoSplash />;
   }
 
   return (
