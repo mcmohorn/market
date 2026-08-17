@@ -1,0 +1,40 @@
+# Copy this file to terraform.tfvars and fill in every value.
+# terraform.tfvars is gitignored — never commit it.
+#
+#   cp terraform.tfvars.example terraform.tfvars
+
+# ── GCP Project ──────────────────────────────────────────────────────────────
+# Find these in the GCP Console → Project Overview, or:
+#   gcloud projects describe YOUR_PROJECT_ID
+
+google_cloud_project_name   = "My MATEO Project"
+google_cloud_project_id     = "my-project-123456"
+google_cloud_project_number = "123456789012"
+
+# ── Database ─────────────────────────────────────────────────────────────────
+# Password for the 'mateo' Cloud SQL user. Use a strong random string.
+# Generate one:  openssl rand -base64 32
+
+db_password = "change-me-use-openssl-rand"
+
+# ── GitHub ───────────────────────────────────────────────────────────────────
+# The Cloud Build v2 GitHub connection must exist before terraform apply.
+# Create it at: https://console.cloud.google.com/cloud-build/triggers/connect
+# The connection name is what you typed in the "Connection name" field.
+
+github_repo_owner      = "your-github-username"
+github_repo_name       = "your-repo-name"
+github_connection_name = "github-connection"   # name given during connect flow
+
+# ── API Keys (stored in Secret Manager — safe to put in this local file) ─────
+# These are written to Secret Manager on apply, never to code or Cloud Build logs.
+
+alpaca_api_key_id     = "PK..."
+alpaca_api_key_secret = "..."
+tiingo_api_token      = "..."
+
+# ── Pro Access ───────────────────────────────────────────────────────────────
+# Comma-separated emails that get pro-tier access.
+# Leave as "" to use the server's built-in default list.
+
+pro_whitelist = ""

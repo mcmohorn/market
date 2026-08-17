@@ -70,7 +70,7 @@ steps:
       - '--add-cloudsql-instances'
       - '${_CLOUDSQL_CONNECTION}'
       - '--set-env-vars'
-      - 'DATABASE_URL=postgresql://mateo:${_DB_PASSWORD}@/mateo?host=/cloudsql/${_CLOUDSQL_CONNECTION}'
+      - 'DATABASE_URL=postgresql://mateo:${_DB_PASSWORD}@/mateo?host=/cloudsql/${_CLOUDSQL_CONNECTION},PRO_WHITELIST=${_PRO_WHITELIST}'
 
   # --- Update updater job image ---
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -95,6 +95,7 @@ substitutions:
   _CLOUDSQL_CONNECTION: ''
   _CLOUDRUN_SA: ''
   _DB_PASSWORD: ''
+  _PRO_WHITELIST: ''
 
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE_NAME}:$COMMIT_SHA'
