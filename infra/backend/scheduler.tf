@@ -18,9 +18,10 @@ resource "google_project_iam_member" "scheduler_run_invoker" {
 # Cloud Build updates the image on push; lifecycle.ignore_changes prevents
 # Terraform from reverting back to the placeholder on subsequent applies.
 resource "google_cloud_run_v2_job" "updater" {
-  name     = "mateo-updater"
-  location = "us-central1"
-  project  = var.project_id
+  name                = "mateo-updater"
+  location            = "us-central1"
+  project             = var.project_id
+  deletion_protection = false
 
   template {
     template {

@@ -51,6 +51,7 @@ export async function initDB() {
         macd_histogram DOUBLE PRECISION DEFAULT 0,
         macd_histogram_adjusted DOUBLE PRECISION DEFAULT 0,
         rsi DOUBLE PRECISION DEFAULT 0,
+        adx DOUBLE PRECISION DEFAULT 0,
         signal_strength DOUBLE PRECISION DEFAULT 0,
         last_signal_change VARCHAR(20) DEFAULT '',
         signal_changes INT DEFAULT 0,
@@ -58,6 +59,10 @@ export async function initDB() {
         volume BIGINT DEFAULT 0,
         computed_at TIMESTAMP DEFAULT NOW()
       );
+
+      -- ADD COLUMN IF NOT EXISTS backfills columns onto pre-existing installs;
+      -- CREATE TABLE IF NOT EXISTS above only covers a fresh database.
+      ALTER TABLE computed_signals ADD COLUMN IF NOT EXISTS adx DOUBLE PRECISION DEFAULT 0;
 
       CREATE UNIQUE INDEX IF NOT EXISTS idx_computed_signals_symbol_asset ON computed_signals(symbol, asset_type);
       CREATE INDEX IF NOT EXISTS idx_computed_signals_signal ON computed_signals(signal);
@@ -177,6 +182,106 @@ export async function initDB() {
       );
       CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
       CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(user_id, read);
+
+      -- Extended technical indicators (Stochastic RSI, VWAP, OBV, ATR, Williams %R).
+      -- One current-state row per symbol, upserted the same way as computed_signals.
+      CREATE TABLE IF NOT EXISTS advanced_indicators (
+        id SERIAL PRIMARY KEY,
+        symbol VARCHAR(20) NOT NULL,
+        asset_type VARCHAR(20) DEFAULT 'stock',
+        stoch_rsi DOUBLE PRECISION DEFAULT 0,
+        stoch_rsi_k DOUBLE PRECISION DEFAULT 0,
+        stoch_rsi_d DOUBLE PRECISION DEFAULT 0,
+        vwap DOUBLE PRECISION DEFAULT 0,
+        obv DOUBLE PRECISION DEFAULT 0,
+        obv_trend VARCHAR(10) DEFAULT '',
+        atr DOUBLE PRECISION DEFAULT 0,
+        atr_pct DOUBLE PRECISION DEFAULT 0,
+        williams_r DOUBLE PRECISION DEFAULT 0,
+        computed_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_advanced_indicators_symbol_asset ON advanced_indicators(symbol, asset_type);
+
+      -- Haar discrete-wavelet-transform decomposition of the close-price series:
+      -- separates trend (approximation) from noise/cycle (detail coefficients).
+      CREATE TABLE IF NOT EXISTS wavelet_features (
+        id SERIAL PRIMARY KEY,
+        symbol VARCHAR(20) NOT NULL,
+        asset_type VARCHAR(20) DEFAULT 'stock',
+        levels INT DEFAULT 0,
+        trend_energy_pct DOUBLE PRECISION DEFAULT 0,
+        noise_energy_pct DOUBLE PRECISION DEFAULT 0,
+        dominant_cycle_length INT DEFAULT 0,
+        denoised_price DOUBLE PRECISION DEFAULT 0,
+        denoised_slope_pct DOUBLE PRECISION DEFAULT 0,
+        wavelet_signal VARCHAR(10) DEFAULT 'HOLD',
+        computed_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_wavelet_features_symbol_asset ON wavelet_features(symbol, asset_type);
+
+      -- Correlation / relative-strength vs. a benchmark (SPY for stocks, BTC for crypto)
+      -- and vs. the symbol's own sector average.
+      CREATE TABLE IF NOT EXISTS correlation_stats (
+        id SERIAL PRIMARY KEY,
+        symbol VARCHAR(20) NOT NULL,
+        asset_type VARCHAR(20) DEFAULT 'stock',
+        benchmark_symbol VARCHAR(20) DEFAULT '',
+        correlation_90d DOUBLE PRECISION DEFAULT 0,
+        beta_90d DOUBLE PRECISION DEFAULT 0,
+        relative_strength_90d DOUBLE PRECISION DEFAULT 0,
+        sector_correlation_90d DOUBLE PRECISION DEFAULT 0,
+        computed_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_correlation_stats_symbol_asset ON correlation_stats(symbol, asset_type);
+
+      -- Ensemble confidence score: combines computed_signals + advanced_indicators +
+      -- wavelet_features + historical prediction accuracy into one 0-100 score, with
+      -- an itemized "components" breakdown that is the direct data source for
+      -- "show our work" tooltips in the UI.
+      CREATE TABLE IF NOT EXISTS signal_confidence (
+        id SERIAL PRIMARY KEY,
+        symbol VARCHAR(20) NOT NULL,
+        asset_type VARCHAR(20) DEFAULT 'stock',
+        signal VARCHAR(10) DEFAULT 'HOLD',
+        confidence_pct DOUBLE PRECISION DEFAULT 0,
+        components JSONB DEFAULT '[]',
+        computed_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_signal_confidence_symbol_asset ON signal_confidence(symbol, asset_type);
+      CREATE INDEX IF NOT EXISTS idx_signal_confidence_pct ON signal_confidence(confidence_pct);
+
+      -- Fundamentals: schema-ready, left unpopulated until a fundamentals data
+      -- provider (Finnhub / FMP / Polygon / Alpha Vantage) is chosen and funded.
+      CREATE TABLE IF NOT EXISTS fundamentals (
+        id SERIAL PRIMARY KEY,
+        symbol VARCHAR(20) NOT NULL,
+        asset_type VARCHAR(20) DEFAULT 'stock',
+        pe_ratio DOUBLE PRECISION,
+        eps DOUBLE PRECISION,
+        market_cap DOUBLE PRECISION,
+        dividend_yield DOUBLE PRECISION,
+        next_earnings_date DATE,
+        source VARCHAR(50) DEFAULT '',
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_fundamentals_symbol_asset ON fundamentals(symbol, asset_type);
+
+      -- Per-symbol, per-day sentiment aggregated from market_news via a keyword
+      -- lexicon scorer. Source is tagged so a future real NLP/sentiment API can be
+      -- added alongside without a schema change.
+      CREATE TABLE IF NOT EXISTS sentiment_scores (
+        id SERIAL PRIMARY KEY,
+        symbol VARCHAR(20) NOT NULL,
+        asset_type VARCHAR(20) DEFAULT 'stock',
+        date DATE NOT NULL,
+        source VARCHAR(50) DEFAULT 'reddit_lexicon',
+        sentiment_score DOUBLE PRECISION DEFAULT 0,
+        mention_count INT DEFAULT 0,
+        sample_headline TEXT DEFAULT '',
+        computed_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_sentiment_scores_symbol_date_source ON sentiment_scores(symbol, asset_type, date, source);
+      CREATE INDEX IF NOT EXISTS idx_sentiment_scores_date ON sentiment_scores(date);
 
       INSERT INTO users (email, display_name, account_type) VALUES
         ('mcmohorn@gmail.com', 'MC Mohorn', 'pro'),

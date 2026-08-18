@@ -415,6 +415,7 @@ router.get("/api/stocks/:symbol", async (req, res) => {
         macdHistogram: stock.macd_histogram,
         macdHistogramAdjusted: stock.macd_histogram_adjusted,
         rsi: stock.rsi,
+        adx: stock.adx,
         signalStrength: stock.signal_strength,
         lastSignalChange: stock.last_signal_change,
         signalChanges: stock.signal_changes,
@@ -425,6 +426,53 @@ router.get("/api/stocks/:symbol", async (req, res) => {
   } catch (err) {
     console.error("Error fetching stock detail:", err);
     res.status(500).json({ error: "Failed to fetch stock detail" });
+  }
+});
+
+router.get("/api/stocks/:symbol/advanced", async (req, res) => {
+  try {
+    const upperSymbol = req.params.symbol.toUpperCase();
+
+    const [advancedResult, waveletResult, correlationResult] = await Promise.all([
+      pool.query(`SELECT * FROM advanced_indicators WHERE symbol = $1 LIMIT 1`, [upperSymbol]),
+      pool.query(`SELECT * FROM wavelet_features WHERE symbol = $1 LIMIT 1`, [upperSymbol]),
+      pool.query(`SELECT * FROM correlation_stats WHERE symbol = $1 LIMIT 1`, [upperSymbol]),
+    ]);
+
+    if (advancedResult.rows.length === 0 && waveletResult.rows.length === 0 && correlationResult.rows.length === 0) {
+      return res.status(404).json({ error: "No advanced indicators computed for this symbol yet" });
+    }
+
+    res.json({
+      symbol: upperSymbol,
+      advanced: advancedResult.rows[0] || null,
+      wavelet: waveletResult.rows[0] || null,
+      correlation: correlationResult.rows[0] || null,
+    });
+  } catch (err) {
+    console.error("Error fetching advanced indicators:", err);
+    res.status(500).json({ error: "Failed to fetch advanced indicators" });
+  }
+});
+
+router.get("/api/stocks/:symbol/confidence", async (req, res) => {
+  try {
+    const upperSymbol = req.params.symbol.toUpperCase();
+
+    const result = await pool.query(
+      `SELECT symbol, asset_type, signal, confidence_pct, components, computed_at
+       FROM signal_confidence WHERE symbol = $1 LIMIT 1`,
+      [upperSymbol]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "No confidence score computed for this symbol yet" });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("Error fetching confidence score:", err);
+    res.status(500).json({ error: "Failed to fetch confidence score" });
   }
 });
 

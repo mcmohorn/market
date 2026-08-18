@@ -15,7 +15,10 @@
     "start": "NODE_ENV=production node --max-old-space-size=1792 dist/server/index.js",
     "strategy-lab": "tsx scripts/strategy-lab.ts",
     "apply-strategies": "tsx scripts/apply-strategies.ts",
-    "backfill-signals": "tsx scripts/backfill-signals.ts"
+    "backfill-signals": "tsx scripts/backfill-signals.ts",
+    "compute-advanced": "tsx server/compute-advanced-indicators.ts",
+    "compute-confidence": "tsx server/compute-confidence-scores.ts",
+    "compute-sentiment": "tsx server/compute-sentiment.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",

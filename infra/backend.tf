@@ -13,9 +13,9 @@
 # terraform.tfstate file.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# terraform {
-#   backend "gcs" {
-#     bucket = "<PROJECT_ID>-terraform-state-bucket"
-#     prefix = ""
-#   }
-# }
+terraform {
+  backend "gcs" {
+    bucket = "mateo-trader-terraform-state-bucket"
+    prefix = ""
+  }
+}

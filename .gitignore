@@ -30,3 +30,4 @@ go.work.sum
 /infra/terraform.tfstate
 /infra/terraform.tfstate.backup
 /infra/terraform.tfvars
+mateo-trader-005085e6907f.json

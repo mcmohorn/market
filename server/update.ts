@@ -3,6 +3,10 @@ import { pool, initDB } from "./db";
 import { analyzeStock, getSignal, getSignalStrength, countSignalChanges, lastSignalChangeDate } from "../shared/indicators";
 import type { StockBar } from "../shared/types";
 import { generateSnapshot } from "./generate-snapshot";
+import { computeAdvancedIndicators } from "./compute-advanced-indicators";
+import { computeConfidenceScores } from "./compute-confidence-scores";
+import { computeSentimentScores } from "./compute-sentiment";
+import { scrapeAndCacheNews } from "./news";
 
 const ALPACA_KEY = process.env.ALPACA_API_KEY_ID || "";
 const ALPACA_SECRET = process.env.ALPACA_API_KEY_SECRET || "";
@@ -191,7 +195,7 @@ async function storeNewBars(allBars: Record<string, StockBar[]>, assetType: stri
   return updatedSymbols;
 }
 
-async function recomputeSignals(updates: { symbol: string; assetType: string }[]) {
+export async function recomputeSignals(updates: { symbol: string; assetType: string }[]) {
   if (updates.length === 0) return;
   console.log(`Recomputing signals for ${updates.length} updated symbols...`);
 
@@ -232,15 +236,15 @@ async function recomputeSignals(updates: { symbol: string; assetType: string }[]
       const signalChangesVal = countSignalChanges(indicators);
 
       await client.query(
-        `INSERT INTO computed_signals (symbol, name, exchange, sector, asset_type, price, change_val, change_percent, signal, macd_histogram, macd_histogram_adjusted, rsi, signal_strength, last_signal_change, signal_changes, data_points, volume, computed_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW())
+        `INSERT INTO computed_signals (symbol, name, exchange, sector, asset_type, price, change_val, change_percent, signal, macd_histogram, macd_histogram_adjusted, rsi, adx, signal_strength, last_signal_change, signal_changes, data_points, volume, computed_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,NOW())
          ON CONFLICT (symbol, asset_type) DO UPDATE SET
-           name=$2, exchange=$3, sector=$4, price=$6, change_val=$7, change_percent=$8, signal=$9, macd_histogram=$10, macd_histogram_adjusted=$11, rsi=$12, signal_strength=$13, last_signal_change=$14, signal_changes=$15, data_points=$16, volume=$17, computed_at=NOW()`,
+           name=$2, exchange=$3, sector=$4, price=$6, change_val=$7, change_percent=$8, signal=$9, macd_histogram=$10, macd_histogram_adjusted=$11, rsi=$12, adx=$13, signal_strength=$14, last_signal_change=$15, signal_changes=$16, data_points=$17, volume=$18, computed_at=NOW()`,
         [
           symbol, meta.name, meta.exchange, meta.sector || "", meta.asset_type,
           last.price, changeVal, changePct,
           signal, last.macdHistogram, last.macdHistogramAdjusted,
-          last.rsi, signalStrengthVal,
+          last.rsi, last.adx, signalStrengthVal,
           lastChange, signalChangesVal,
           bars.length, bars[bars.length - 1].volume,
         ]
@@ -377,6 +381,17 @@ async function main() {
   }
 
   await backfillMissingSignals();
+
+  console.log("\nRefreshing news + number-crunching tables...");
+  try {
+    await scrapeAndCacheNews();
+  } catch (err) {
+    console.error("[Update] News scrape failed (non-fatal):", err);
+  }
+  await computeAdvancedIndicators();
+  await computeConfidenceScores();
+  await computeSentimentScores();
+
   await generateSnapshot();
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
@@ -455,7 +470,12 @@ async function sendSignalEmail(email: string, symbol: string, from: string, to: 
   }
 }
 
-main().catch(err => {
-  console.error("Update failed:", err);
-  process.exit(1);
-});
+// Guarded so update.ts can be imported for its exported helpers (e.g.
+// recomputeSignals) without triggering a full live update run as a side effect
+// of import — same convention as server/generate-snapshot.ts.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch(err => {
+    console.error("Update failed:", err);
+    process.exit(1);
+  });
+}

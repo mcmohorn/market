@@ -35,6 +35,7 @@ export interface StockAnalysis {
   macdHistogram: number;
   macdHistogramAdjusted: number;
   rsi: number;
+  adx: number;
   signalStrength: number;
   lastSignalChange: string;
   signalChanges: number;

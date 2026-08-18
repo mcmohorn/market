@@ -80,19 +80,19 @@ async function main() {
       await client.query(
         `INSERT INTO computed_signals
            (symbol, name, exchange, sector, asset_type, price, change_val, change_percent,
-            signal, macd_histogram, macd_histogram_adjusted, rsi, signal_strength,
+            signal, macd_histogram, macd_histogram_adjusted, rsi, adx, signal_strength,
             last_signal_change, signal_changes, data_points, volume, computed_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW())
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,NOW())
          ON CONFLICT (symbol, asset_type) DO UPDATE SET
            name=$2, exchange=$3, sector=$4, price=$6, change_val=$7, change_percent=$8,
-           signal=$9, macd_histogram=$10, macd_histogram_adjusted=$11, rsi=$12,
-           signal_strength=$13, last_signal_change=$14, signal_changes=$15,
-           data_points=$16, volume=$17, computed_at=NOW()`,
+           signal=$9, macd_histogram=$10, macd_histogram_adjusted=$11, rsi=$12, adx=$13,
+           signal_strength=$14, last_signal_change=$15, signal_changes=$16,
+           data_points=$17, volume=$18, computed_at=NOW()`,
         [
           symbol, meta.name, meta.exchange, meta.sector || "", asset_type,
           last.price, changeVal, changePct,
           signal, last.macdHistogram, last.macdHistogramAdjusted,
-          last.rsi, signalStrengthVal,
+          last.rsi, last.adx, signalStrengthVal,
           lastChange, signalChangesVal,
           bars.length, bars[bars.length - 1].volume,
         ]
