@@ -1,4 +1,5 @@
 import type { StockAnalysis, StockDetail, TopPerformer, SimulationResult, SimulationRequest, CompareRequest, MarketConditionsRequest, StrategyComparison, MarketConditionResult } from "../../../shared/types";
+import type { StockConfidence, StockAdvanced } from "./types";
 
 const BASE = "";
 
@@ -93,6 +94,24 @@ export async function fetchTopPerformers(assetType?: string, asOfDate?: string):
 export async function fetchStockDetail(symbol: string): Promise<StockDetail> {
   const res = await fetch(`${BASE}/api/stocks/${symbol}`);
   if (!res.ok) throw new Error("Failed to fetch stock detail");
+  return res.json();
+}
+
+/** Ensemble confidence score + itemized "show our work" reasoning for a symbol.
+ *  404s for symbols where the compute pass hasn't run yet (thin data) — callers
+ *  should treat a thrown error as "not available" rather than a hard failure. */
+export async function fetchStockConfidence(symbol: string): Promise<StockConfidence> {
+  const res = await fetch(`${BASE}/api/stocks/${symbol}/confidence`);
+  if (!res.ok) throw new Error("Confidence not available");
+  return res.json();
+}
+
+/** Stochastic RSI/VWAP/OBV/ATR/Williams %R, wavelet trend decomposition, and
+ *  correlation-vs-benchmark stats for a symbol. Same 404-means-not-yet-computed
+ *  contract as fetchStockConfidence. */
+export async function fetchStockAdvanced(symbol: string): Promise<StockAdvanced> {
+  const res = await fetch(`${BASE}/api/stocks/${symbol}/advanced`);
+  if (!res.ok) throw new Error("Advanced indicators not available");
   return res.json();
 }
 

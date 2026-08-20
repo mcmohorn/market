@@ -5,6 +5,7 @@ import "ag-grid-community/styles/ag-theme-alpine.css";
 import type { ColDef } from "ag-grid-community";
 import { fetchStocks, fetchSectors, getAsOfDate, type TimeJump } from "../lib/api";
 import type { StockAnalysis } from "../lib/types";
+import { GLOSSARY } from "../lib/glossary";
 
 interface Props {
   assetType: string;
@@ -140,6 +141,7 @@ export default function StockGrid({ assetType, timeJump, onTimeJumpChange, onSel
       {
         field: "signal",
         headerName: "SIGNAL",
+        headerTooltip: GLOSSARY.signal,
         width: 90,
         cellRenderer: (params: any) => (
           <span
@@ -158,6 +160,7 @@ export default function StockGrid({ assetType, timeJump, onTimeJumpChange, onSel
       {
         field: "rsi",
         headerName: "RSI",
+        headerTooltip: GLOSSARY.rsi,
         width: 80,
         type: "numericColumn",
         cellClass: (p: any) => {
@@ -171,6 +174,7 @@ export default function StockGrid({ assetType, timeJump, onTimeJumpChange, onSel
       {
         field: "macdHistogram",
         headerName: "MACD",
+        headerTooltip: GLOSSARY.macd,
         width: 100,
         type: "numericColumn",
         cellClass: (p: any) => (p.value >= 0 ? "text-cyber-green" : "text-cyber-red"),
@@ -179,6 +183,7 @@ export default function StockGrid({ assetType, timeJump, onTimeJumpChange, onSel
       {
         field: "signalStrength",
         headerName: "STRENGTH",
+        headerTooltip: GLOSSARY.signalStrength,
         width: 100,
         type: "numericColumn",
         valueFormatter: (p: any) => p.value != null ? p.value.toFixed(2) : "",
@@ -186,12 +191,14 @@ export default function StockGrid({ assetType, timeJump, onTimeJumpChange, onSel
       {
         field: "signalChanges",
         headerName: "CHANGES",
+        headerTooltip: GLOSSARY.signalChanges,
         width: 90,
         type: "numericColumn",
       },
       {
         field: "dataPoints",
         headerName: "DATA PTS",
+        headerTooltip: GLOSSARY.dataPoints,
         width: 90,
         type: "numericColumn",
       },

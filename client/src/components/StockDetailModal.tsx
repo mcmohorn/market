@@ -1,7 +1,9 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { fetchStockDetail } from "../lib/api";
-import type { StockDetail, IndicatorData } from "../lib/types";
+import { fetchStockDetail, fetchStockConfidence, fetchStockAdvanced } from "../lib/api";
+import type { StockDetail, IndicatorData, StockConfidence, StockAdvanced } from "../lib/types";
 import { useAuth } from "../context/AuthContext";
+import InfoTooltip from "./InfoTooltip";
+import { GLOSSARY } from "../lib/glossary";
 import {
   ComposedChart, Line, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, ReferenceLine, ReferenceArea, CartesianGrid, Area, Cell,
@@ -23,6 +25,8 @@ export default function StockDetailModal({ symbol, onClose, isPro, assetType: mo
   const [loading, setLoading] = useState(true);
   const [watched, setWatched] = useState(false);
   const [watching, setWatching] = useState(false);
+  const [confidence, setConfidence] = useState<StockConfidence | null>(null);
+  const [advanced, setAdvanced] = useState<StockAdvanced | null>(null);
 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -36,6 +40,8 @@ export default function StockDetailModal({ symbol, onClose, isPro, assetType: mo
 
   useEffect(() => {
     setLoading(true);
+    setConfidence(null);
+    setAdvanced(null);
     fetchStockDetail(symbol)
       .then((d) => {
         setDetail(d);
@@ -48,6 +54,12 @@ export default function StockDetailModal({ symbol, onClose, isPro, assetType: mo
       })
       .catch(() => setDetail(null))
       .finally(() => setLoading(false));
+
+    // Confidence/advanced indicators are a distinct, optional compute pass —
+    // some symbols (thin data) 404 on these even though the core detail above
+    // succeeds, so they're fetched independently and failures are silent.
+    fetchStockConfidence(symbol).then(setConfidence).catch(() => setConfidence(null));
+    fetchStockAdvanced(symbol).then(setAdvanced).catch(() => setAdvanced(null));
   }, [symbol]);
 
   const filteredIndicators = useMemo(() => {
@@ -203,6 +215,10 @@ export default function StockDetailModal({ symbol, onClose, isPro, assetType: mo
           <div className="p-4 space-y-4">
             <SummarySection summary={detail.summary} />
 
+            <ConfidenceSection confidence={confidence} />
+
+            <AdvancedIndicatorsSection advanced={advanced} />
+
             <div className="border border-cyber-grid p-3 space-y-3">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="text-[10px] text-cyber-green uppercase tracking-widest">Date Range</div>
@@ -320,22 +336,130 @@ function SummarySection({ summary }: { summary: StockDetail["summary"] }) {
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       <MetricCard label="PRICE" value={`$${summary.price.toFixed(2)}`} />
       <MetricCard label="CHANGE" value={`${isPositive ? "+" : ""}${summary.changePercent.toFixed(2)}%`} color={isPositive ? "green" : "red"} />
-      <MetricCard label="SIGNAL" value={summary.signal} color={summary.signal === "BUY" ? "green" : summary.signal === "SELL" ? "red" : "yellow"} />
-      <MetricCard label="RSI" value={summary.rsi.toFixed(1)} color={summary.rsi > 70 ? "red" : summary.rsi < 30 ? "green" : "yellow"} />
-      <MetricCard label="MACD" value={summary.macdHistogram.toFixed(4)} color={summary.macdHistogram >= 0 ? "green" : "red"} />
-      <MetricCard label="STRENGTH" value={summary.signalStrength.toFixed(2)} />
-      <MetricCard label="SIGNAL CHANGES" value={String(summary.signalChanges)} />
-      <MetricCard label="DATA POINTS" value={String(summary.dataPoints)} />
+      <MetricCard label="SIGNAL" value={summary.signal} color={summary.signal === "BUY" ? "green" : summary.signal === "SELL" ? "red" : "yellow"} tooltip={GLOSSARY.signal} />
+      <MetricCard label="RSI" value={summary.rsi.toFixed(1)} color={summary.rsi > 70 ? "red" : summary.rsi < 30 ? "green" : "yellow"} tooltip={GLOSSARY.rsi} />
+      <MetricCard label="MACD" value={summary.macdHistogram.toFixed(4)} color={summary.macdHistogram >= 0 ? "green" : "red"} tooltip={GLOSSARY.macd} />
+      <MetricCard label="STRENGTH" value={summary.signalStrength.toFixed(2)} tooltip={GLOSSARY.signalStrength} />
+      <MetricCard label="SIGNAL CHANGES" value={String(summary.signalChanges)} tooltip={GLOSSARY.signalChanges} />
+      <MetricCard label="DATA POINTS" value={String(summary.dataPoints)} tooltip={GLOSSARY.dataPoints} />
     </div>
   );
 }
 
-function MetricCard({ label, value, color }: { label: string; value: string; color?: string }) {
+function MetricCard({ label, value, color, tooltip }: { label: string; value: string; color?: string; tooltip?: string }) {
   const colorClass = color === "green" ? "text-cyber-green" : color === "red" ? "text-cyber-red" : color === "yellow" ? "text-cyber-yellow" : "text-cyber-text";
   return (
     <div className="bg-cyber-bg border border-cyber-border rounded p-3">
-      <div className="text-[10px] text-cyber-muted uppercase tracking-wider mb-1">{label}</div>
+      <div className="text-[10px] text-cyber-muted uppercase tracking-wider mb-1 flex items-center gap-1">
+        {label}
+        {tooltip && <InfoTooltip content={tooltip} />}
+      </div>
       <div className={`text-lg font-bold ${colorClass}`}>{value}</div>
+    </div>
+  );
+}
+
+function ConfidenceSection({ confidence }: { confidence: StockConfidence | null }) {
+  if (!confidence) return null;
+  const pct = confidence.confidence_pct;
+  const color = pct >= 70 ? "text-cyber-green" : pct >= 40 ? "text-cyber-yellow" : "text-cyber-red";
+  const barColor = pct >= 70 ? "bg-cyber-green" : pct >= 40 ? "bg-cyber-yellow" : "bg-cyber-red";
+
+  return (
+    <div className="border border-cyber-grid p-3 space-y-3">
+      <div className="flex items-center gap-1.5">
+        <div className="text-[10px] text-cyber-green uppercase tracking-widest">Confidence & Reasoning</div>
+        <InfoTooltip content={GLOSSARY.confidence} width="md" />
+      </div>
+
+      <div className="flex items-center gap-3">
+        <div className={`text-3xl font-bold ${color}`}>{pct}%</div>
+        <div className="flex-1 h-2 bg-cyber-bg border border-cyber-border rounded overflow-hidden">
+          <div className={`h-full ${barColor}`} style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        {confidence.components.map((c, i) => (
+          <div key={i} className="flex items-center justify-between gap-2 text-xs bg-cyber-bg border border-cyber-border rounded px-2.5 py-1.5">
+            <InfoTooltip content={c.detail} width="md">
+              <span className="text-cyber-text cursor-help border-b border-dotted border-cyber-muted/50">{c.label}</span>
+            </InfoTooltip>
+            <span className={`font-mono font-bold shrink-0 ${c.contribution > 0 ? "text-cyber-green" : "text-cyber-muted"}`}>
+              {c.contribution > 0 ? "+" : ""}{c.contribution}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AdvancedIndicatorsSection({ advanced }: { advanced: StockAdvanced | null }) {
+  if (!advanced || (!advanced.advanced && !advanced.wavelet && !advanced.correlation)) return null;
+  const { advanced: adv, wavelet, correlation } = advanced;
+
+  return (
+    <div className="border border-cyber-grid p-3 space-y-3">
+      <div className="text-[10px] text-cyber-green uppercase tracking-widest">Advanced Indicators</div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {adv && (
+          <>
+            <MetricCard
+              label="STOCH RSI"
+              value={`${adv.stoch_rsi_k.toFixed(0)} / ${adv.stoch_rsi_d.toFixed(0)}`}
+              color={adv.stoch_rsi_k > 80 ? "red" : adv.stoch_rsi_k < 20 ? "green" : "yellow"}
+              tooltip={GLOSSARY.stochRsi}
+            />
+            <MetricCard label="VWAP" value={`$${adv.vwap.toFixed(2)}`} tooltip={GLOSSARY.vwap} />
+            <MetricCard
+              label="OBV TREND"
+              value={adv.obv_trend || "FLAT"}
+              color={adv.obv_trend === "UP" ? "green" : adv.obv_trend === "DOWN" ? "red" : "yellow"}
+              tooltip={GLOSSARY.obv}
+            />
+            <MetricCard label="ATR" value={`$${adv.atr.toFixed(2)} (${adv.atr_pct.toFixed(1)}%)`} tooltip={GLOSSARY.atr} />
+            <MetricCard
+              label="WILLIAMS %R"
+              value={adv.williams_r.toFixed(0)}
+              color={adv.williams_r >= -20 ? "red" : adv.williams_r <= -80 ? "green" : "yellow"}
+              tooltip={GLOSSARY.williamsR}
+            />
+          </>
+        )}
+        {wavelet && (
+          <>
+            <MetricCard
+              label="WAVELET TREND"
+              value={`${wavelet.trend_energy_pct.toFixed(0)}% trend / ${wavelet.noise_energy_pct.toFixed(0)}% noise`}
+              tooltip={GLOSSARY.waveletTrend}
+            />
+            <MetricCard
+              label="DENOISED SLOPE"
+              value={`${wavelet.denoised_slope_pct >= 0 ? "+" : ""}${wavelet.denoised_slope_pct.toFixed(2)}%`}
+              color={wavelet.denoised_slope_pct > 0 ? "green" : wavelet.denoised_slope_pct < 0 ? "red" : "yellow"}
+              tooltip={GLOSSARY.waveletSlope}
+            />
+          </>
+        )}
+        {correlation && (
+          <>
+            <MetricCard
+              label={`CORR vs ${correlation.benchmark_symbol}`}
+              value={correlation.correlation_90d.toFixed(2)}
+              tooltip={GLOSSARY.correlation}
+            />
+            <MetricCard label="BETA" value={correlation.beta_90d.toFixed(2)} tooltip={GLOSSARY.beta} />
+            <MetricCard
+              label="REL STRENGTH"
+              value={`${correlation.relative_strength_90d >= 0 ? "+" : ""}${correlation.relative_strength_90d.toFixed(1)}%`}
+              color={correlation.relative_strength_90d > 0 ? "green" : "red"}
+              tooltip={GLOSSARY.relativeStrength}
+            />
+            <MetricCard label="SECTOR CORR" value={correlation.sector_correlation_90d.toFixed(2)} tooltip={GLOSSARY.sectorCorrelation} />
+          </>
+        )}
+      </div>
     </div>
   );
 }

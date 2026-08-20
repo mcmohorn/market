@@ -13,9 +13,13 @@ google_cloud_project_number = "123456789012"
 
 # ── Database ─────────────────────────────────────────────────────────────────
 # Password for the 'mateo' Cloud SQL user. Use a strong random string.
-# Generate one:  openssl rand -base64 32
+# Generate one:  openssl rand -hex 24
+# Keep it alphanumeric (hex output is fine, -base64 is not): this password is
+# embedded directly into a DATABASE_URL connection string in cloudbuild.yaml and
+# Cloud Run env vars with no URL-encoding step, so @ / % & etc. will silently
+# break connections.
 
-db_password = "change-me-use-openssl-rand"
+db_password = "change-me-use-openssl-rand-hex-24"
 
 # ── GitHub ───────────────────────────────────────────────────────────────────
 # The Cloud Build v2 GitHub connection must exist before terraform apply.
